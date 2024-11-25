@@ -1,0 +1,615 @@
+#!/usr/bin/env bash
+
+# kubectl-mdb is a kubectl plugin that helps interact
+# with mariadb-operator semi-sync replication clusters
+
+[[ -n "${DEBUG}" ]] && set -x
+set -eo pipefail
+
+VERSION="0.0.1-dev"
+
+KMDB_KUBECTL="${KMDB_KUBECTL:-kubectl}"
+KMDB_NAMESPACE="${KMDB_NAMESPACE:-default}"
+KMDB_BACKUP_THREADS="${KMDB_BACKUP_THREADS:-1}"
+KMDB_BACKUP_DIR="${KMDB_BACKUP_DIR:-/var/lib/mysql/.kmdb_backup}"
+KMDB_RESTORE_DIR="${KMDB_RESTORE_DIR:-/var/lib/mysql/.kmdb_restore}"
+KMDB_STREAM_PORT="${KMDB_STREAM_PORT:-4444}"
+
+# colors
+RED=$(tput setaf 1)
+GRN=$(tput setaf 2)
+YLW=$(tput setaf 3)
+BLU=$(tput setaf 4)
+CYA=$(tput setaf 5)
+MAG=$(tput setaf 6)
+RES=$(tput sgr0)
+
+### show help message and exit
+# arg: none
+show_help() {
+  cat << EOF | colorize "man"
+kubectl mdb helps interact with mariadb-operator semi-sync replication clusters
+
+Usage:
+  kubectl mdb <command> [<target>]
+
+Commands:
+$(awk '/^####/ {$1=""; print}' "$0" \
+  | while IFS="-" read -r command description; do
+      printf " %-26s%s\n" "${command}" "${description}"
+    done
+)
+
+Flags:
+  -n, --namespace string    set namespace scope
+  -v, --version             show plugin version
+  -h, --help                show this message
+EOF
+  exit 0
+}
+
+### show version and exit
+# arg: none
+show_version() {
+  echo "kubectl mdb version v${VERSION}"
+  exit 0
+}
+
+### validate crucial global vars
+# arg: none
+check_globals() {
+  [[ "${KMDB_BACKUP_THREADS}" =~ ^[1-8]$ ]] || err "KMDB_BACKUP_THREADS is not allowed integer [1..8]: ${KMDB_BACKUP_THREADS}"
+
+  [[ "${KMDB_STREAM_PORT}" =~ ^[0-9]+$ \
+    && "${KMDB_STREAM_PORT}" -ne 3306
+    && "${KMDB_STREAM_PORT}" -gt 1024 \
+    && "${KMDB_STREAM_PORT}" -le 65535 ]] || err "KMDB_STREAM_PORT is not allowed integer [1024..65535]: ${KMDB_STREAM_PORT}"
+
+  [[ "${KMDB_BACKUP_DIR}" =~ ^/var/lib/mysql/.* ]] || err "KMDB_BACKUP_DIR is not within /var/lib/mysql/: ${KMDB_BACKUP_DIR}"
+  [[ "${KMDB_RESTORE_DIR}" =~ ^/var/lib/mysql/.* ]] || err "KMDB_RESTORE_DIR is not within /var/lib/mysql/: ${KMDB_RESTORE_DIR}"
+}
+
+### ensure that core dependencies are installed
+# arg: none
+check_dependencies() {
+  hash jq 2>/dev/null || err "dependency 'https://github.com/jqlang/jq' is not available"
+  hash "${KMDB_KUBECTL}" 2>/dev/null || err "dependency '${KMDB_KUBECTL}' is not available"
+}
+
+### colorize the input based on the given linter format
+# arg: $1 - linter format
+colorize() {
+  local format
+
+  format="$1"; shift
+
+  if hash bat 2>/dev/null; then
+    bat -pp --force-colorization --language "${format}"
+  else
+    cat
+  fi
+}
+
+### highlight the message with the given color
+# arg: $1 - color
+#      $2 - message
+highlight() {
+  local color message
+
+  color="$1"; shift
+  message="$1"; shift
+
+  echo -e "${color}${message}${RES}"
+}
+
+### show error message and exit
+# arg: $1 - message
+err() {
+  local message
+
+  message="$1"; shift
+
+  echo "$(highlight "${RED}" "🮲 error:") ${message}" >&2
+  exit 1
+}
+
+### show a message that denotes the start of a step in a multi-stage task
+# arg: $1 - step number
+#      $2 - resource role
+#      $3 - resource name
+#      $4 - message
+step() {
+  local step role name message
+
+  step="$1"; shift
+  role="$1"; shift
+  name="$1"; shift
+  message="$1"; shift
+
+  case "${role}" in
+    primary) role=$(highlight "${GRN}" "${role}") ;;
+    replica) role=$(highlight "${YLW}" "${role}") ;;
+    cluster) role=$(highlight "${BLU}" "${role}") ;;
+  esac
+
+  echo "[$(highlight "${MAG}" "${step}/14")] [$(date +%T)] [${role}] [${name}] ${message}"
+}
+
+### ask for confirmation to proceed
+# arg: $1 - message
+confirm() {
+  local message confirm
+
+  message="$1"; shift
+
+  echo -n "$(highlight "${BLU}" "⦿ confirm:") type 'yes' to ${message}: "
+  read -r confirm
+  [[ "${confirm}" == "yes" ]] || err "confirmation failed"
+}
+
+### parse and validate the input
+# arg: $@ - arguments
+# set: COMMAND, KMDB_NAMESPACE, TARGET
+parse_input() {
+  while (( "$#" )); do
+    case "$1" in
+      -n|--namespace)
+        if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
+          KMDB_NAMESPACE="$2"; shift 2
+        else
+          err "option $1 requires an argument"
+        fi
+        ;;
+      -v|--version)
+        show_version
+        ;;
+      -h|--help)
+        show_help
+        ;;
+      -*)
+        err "invalid option: $1"
+        ;;
+      *)
+        if [[ -z "${COMMAND}" ]]; then
+          case "$1" in
+            ls|status|suspend|unsuspend|enter|sql|proc|du|top|repl|prom|recreate)
+              COMMAND="$1"; shift
+              ;;
+            *)
+              err "invalid command: $1"
+              ;;
+          esac
+        else
+          if [[ -z "${TARGET}" ]]; then
+            TARGET="$1"; shift
+          else
+            err "multiple targets provided"
+          fi
+        fi
+        ;;
+    esac
+  done
+  [[ -n "${COMMAND}" ]] || err "no command provided"
+  [[ -n "${TARGET}" || "${COMMAND}" =~ ^(ls|top)$ ]] || err "no target provided"
+}
+
+### get pod json object and set crucial pod vars
+# arg: $1 - pod
+# set: POD, POD_IP
+get_pod() {
+  local pod
+
+  pod="$1"; shift
+
+  POD=$("${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" get pod "${pod}" --ignore-not-found --output json)
+  [[ -n "${POD}" ]] || err "pod '${pod}' not found in '${KMDB_NAMESPACE}' namespace"
+
+  jq --exit-status '.metadata.labels["app.kubernetes.io/name"] == "mariadb"' <<< "${POD}" >/dev/null \
+    || err "pod '${pod}' in '${KMDB_NAMESPACE}' namespace is not a mariadb pod"
+
+  POD_IP=$(jq --raw-output '.status.podIP' <<< "${POD}")
+}
+
+### get mariadb json object and set crucial mariadb vars
+# arg: $1 - mariadb
+# set: MARIADB, MARIADB_REPLICATION, MARIADB_SUSPEND, MARIADB_CURRENT_PRIMARY_INDEX, MARIADB_DESIRED_PRIMARY_INDEX
+get_mariadb() {
+  local mariadb
+
+  mariadb="$1"; shift
+
+  MARIADB=$("${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" get mariadb "${mariadb}" --ignore-not-found --output json)
+  [[ -n "${MARIADB}" ]] || err "mariadb '${mariadb}' not found in '${KMDB_NAMESPACE}' namespace"
+
+  MARIADB_REPLICATION=$(jq --raw-output '.spec.replication.enabled' <<< "${MARIADB}")
+  MARIADB_SUSPEND=$(jq --raw-output '.spec.suspend' <<< "${MARIADB}")
+  MARIADB_CURRENT_PRIMARY_INDEX=$(jq --raw-output '.status.currentPrimaryPodIndex' <<< "${MARIADB}")
+  MARIADB_DESIRED_PRIMARY_INDEX=$(jq --raw-output '.spec.replication.primary.podIndex' <<< "${MARIADB}")
+}
+
+### check if semi-sync replication is enabled
+# arg: none
+is_replication_enabled() {
+  local mariadb
+
+  mariadb="${TARGET}"
+
+  [[ "${MARIADB_REPLICATION}" == "true" ]] || err "semi-sync replication is disabled for mariadb '${mariadb}' in '${KMDB_NAMESPACE}' namespace"
+}
+
+### check if mariadb is suspended
+# arg: none
+is_suspended() {
+  if [[ "${MARIADB_SUSPEND}" == "true" ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+### check if primary switchover is already requested
+# arg: none
+is_switching_primary() {
+  if [[ "${MARIADB_DESIRED_PRIMARY_INDEX}" -ne "${MARIADB_CURRENT_PRIMARY_INDEX}" ]]; then
+    err "aborted due to mismatch between the desired '${MARIADB_DESIRED_PRIMARY_INDEX}' and current '${MARIADB_CURRENT_PRIMARY_INDEX}' primary pod indexes"
+  fi
+}
+
+### check if pod is a replica
+# arg: $1 - pod
+is_replica() {
+  local pod pod_index
+
+  pod="$1"; shift
+
+  pod_index="${pod##*-}"
+
+  if [[ "${pod_index}" -eq "${MARIADB_CURRENT_PRIMARY_INDEX}" ]]; then
+    err "pod '${pod}' in '${KMDB_NAMESPACE}' namespace is not a replica"
+  fi
+}
+
+### run a shell command in a mariadb pod
+# arg: $1 - pod
+#      $2 - command
+exec_pod() {
+  local pod command
+
+  pod="$1"; shift
+  command=("$@"); shift "$#"
+
+  "${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" exec "${pod}" --stdin --tty --container mariadb -- "${command[@]}"
+}
+
+### run a sql query in a mariadb pod
+# arg: $2 - pod
+#      $2 - sql query
+run_sql_query() {
+  local pod sql_query
+
+  pod="$1"; shift
+  sql_query="$1"; shift
+
+  exec_pod "${pod}" sh -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --execute='${sql_query}'"
+}
+
+### suspend mariadb reconciliation
+# arg: $1 - mariadb
+suspend_mariadb() {
+  local mariadb
+
+  mariadb="$1"; shift
+
+  "${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" patch mariadb "${mariadb}" --type json \
+    --patch='[{"op": "replace", "path": "/spec/suspend", "value": true}]' \
+      || err "failed to suspend mariadb '${mariadb}' in '${KMDB_NAMESPACE}' namespace"
+}
+
+### suspend mariadb reconciliation
+# arg: $1 - mariadb
+unsuspend_mariadb() {
+  local mariadb
+
+  mariadb="$1"; shift
+
+  "${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" patch mariadb "${mariadb}" --type json \
+    --patch='[{"op": "replace", "path": "/spec/suspend", "value": false}]' \
+      || err "failed to unsuspend mariadb '${mariadb}' in '${KMDB_NAMESPACE}' namespace"
+}
+
+#============================================#
+#==========| SUBCOMMAND FUNCTIONS |==========#
+#============================================#
+
+#### ls [<mariadb>] - list mariadbs with their pods
+# arg: none
+mdb_ls() {
+  "${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" get mariadbs --ignore-not-found \
+    | awk "NR == 1 || \$1 ~ /${TARGET:-.}/" \
+    | colorize "VimHelp"
+  echo
+  "${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" get pods --selector app.kubernetes.io/name=mariadb --ignore-not-found --output wide \
+    | awk "NR == 1 || \$1 ~ /${TARGET:-.}/" \
+    | colorize "VimHelp"
+}
+
+#### status <mariadb> - check mariadb status
+# arg: none
+mdb_status() {
+  local mariadb
+
+  mariadb="${TARGET}"
+
+  get_mariadb "${mariadb}"
+
+  if hash yq 2>/dev/null; then
+    yq --yaml-output '.spec.replication.primary, .status' <<< "${MARIADB}" \
+      | sed '/---/d' \
+      | colorize "yaml"
+  else
+    jq --raw-output '[.spec.replication.primary, .status]' <<< "${MARIADB}"
+  fi
+}
+
+#### suspend <mariadb> - pause mariadb reconciliation
+# arg: none
+mdb_suspend() {
+  local mariadb
+
+  mariadb="${TARGET}"
+
+  get_mariadb "${mariadb}"
+
+  if ! is_suspended; then
+    suspend_mariadb "${mariadb}"
+  else
+    err "mariadb '${mariadb}' in '${KMDB_NAMESPACE}' namespace is already suspended"
+  fi
+}
+
+#### unsuspend <mariadb> - resume mariadb reconciliation
+# arg: none
+mdb_unsuspend() {
+  local mariadb
+
+  mariadb="${TARGET}"
+
+  get_mariadb "${mariadb}"
+
+  if is_suspended; then
+    unsuspend_mariadb "${mariadb}"
+  else
+    err "mariadb '${mariadb}' in '${KMDB_NAMESPACE}' namespace is not suspended"
+  fi
+}
+
+#### enter <pod> - exec into pod
+# arg: none
+mdb_enter() {
+  local pod
+
+  pod="${TARGET}"
+
+  get_pod "${pod}"
+  exec_pod "${pod}" "bash"
+}
+
+#### sql <pod> - launch mariadb shell
+# arg: none
+mdb_sql() {
+  local pod
+
+  pod="${TARGET}"
+
+  get_pod "${pod}"
+  exec_pod "${pod}" sh -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD}"
+}
+
+#### proc <pod> - print processlist
+# arg: none
+mdb_proc() {
+  local pod
+
+  pod="${TARGET}"
+
+  get_pod "${pod}"
+  run_sql_query "${pod}" "SHOW PROCESSLIST;"
+}
+
+#### du <pod> - calculate database disk usage
+# arg: none
+mdb_du() {
+  local pod
+
+  pod="${TARGET}"
+
+  get_pod "${pod}"
+  exec_pod "${pod}" sh -c "find /var/lib/mysql/ -maxdepth 1 -type d ! -name 'lost+found' -exec du -sh {} \; | sort -rh | awk -F/ '{print \$1, \$5}'"
+}
+
+#### top [<pod>] - display cpu and ram usage
+# arg: none
+mdb_top() {
+  "${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" top pods --selector app.kubernetes.io/name=mariadb --containers \
+    | sed 's/(cores)\|(bytes)//g' \
+    | column -t \
+    | awk "NR == 1 || \$1 ~ /${TARGET:-.}/" \
+    | colorize "VimHelp"
+}
+
+#### repl <replica> - check replication status
+# arg: none
+mdb_repl() {
+  local replica mariadb
+
+  replica="${TARGET}"
+  mariadb="${TARGET%-[0-9]}"
+
+  get_pod "${replica}"
+  get_mariadb "${mariadb}"
+
+  is_replication_enabled
+  is_replica "${replica}"
+
+  run_sql_query "${replica}" 'SHOW VARIABLES LIKE "rpl_semi_sync_slave_enabled";' \
+    | grep --quiet ON || err "semi-sync replication is disabled on this pod"
+  run_sql_query "${replica}" 'SHOW REPLICA "mariadb-operator" STATUS\G' \
+    | awk '/Master_Host|Seconds_Behind_Master|Slave_IO|Slave_SQL|Last_SQL_Error/ {$1=$1; print}' \
+    | sort \
+    | colorize "yaml"
+}
+
+#### prom <replica> - promote replica to primary
+# arg: none
+mdb_prom() {
+  local replica mariadb replica_index
+
+  replica="${TARGET}"
+  mariadb="${replica%-[0-9]}"
+  replica_index="${replica##*-}"
+
+  get_pod "${replica}"
+  get_mariadb "${mariadb}"
+
+  is_replication_enabled
+  is_replica "${replica}"
+  is_switching_primary
+
+  confirm "promote replica pod '${replica}' in '${KMDB_NAMESPACE}' namespace to primary"
+
+  "${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" patch mariadb "${mariadb}" --type json \
+    --patch='[{"op": "replace", "path": "/spec/replication/primary/podIndex", "value": '"${replica_index}"'}]'
+}
+
+#### recreate <replica> - recreate replica from primary
+# arg: none
+mdb_recreate() {
+  local replica mariadb replica_ip primary log_file
+  local -i step_num=1
+
+  replica="${TARGET}"
+  mariadb="${replica%-[0-9]}"
+
+  get_pod "${replica}"
+  get_mariadb "${mariadb}"
+
+  is_replication_enabled
+  is_replica "${replica}"
+  is_switching_primary
+
+  replica_ip="${POD_IP}"
+  primary="${mariadb}-${MARIADB_CURRENT_PRIMARY_INDEX}"
+
+  get_pod "${primary}"
+
+  confirm "recreate replica pod '${replica}' in '${KMDB_NAMESPACE}' namespace from primary pod '${primary}'"
+
+  log_file=$(mktemp)
+  echo "$(highlight "${CYA}" "⦿ log:") ${log_file}"
+
+  {
+
+  step "${step_num}" "replica" "${replica}" "Looking for leftovers from previous attempts"
+  exec_pod "${replica}" sh -c "test ! -e ${KMDB_BACKUP_DIR}" \
+    || err "please remove '${KMDB_BACKUP_DIR}' directory"
+  exec_pod "${replica}" sh -c "test ! -e ${KMDB_RESTORE_DIR}" \
+    || err "please remove '${KMDB_RESTORE_DIR}' directory"
+  (( step_num +=1 ))
+
+  step "${step_num}" "cluster" "${mariadb}" "Pausing reconciliation by mariadb-operator"
+  if ! is_suspended; then
+    suspend_mariadb "${mariadb}"
+  fi
+  (( step_num +=1 ))
+
+  step "${step_num}" "replica" "${replica}" "Dropping databases to free up disk space"
+  exec_pod "${replica}" sh -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --batch --skip-column-names --execute='SHOW DATABASES WHERE Database NOT IN (\"information_schema\", \"performance_schema\", \"mysql\", \"sys\");' \
+    | xargs --no-run-if-empty --replace mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --execute='DROP DATABASE \`{}\`;'" \
+    || err "failed to drop databases"
+  (( step_num +=1 ))
+
+  step "${step_num}" "replica" "${replica}" "Preparing to receive the backup stream from primary '${primary}'"
+  exec_pod "${replica}" nohup sh -c "mkdir ${KMDB_BACKUP_DIR} && socat -u TCP-LISTEN:${KMDB_STREAM_PORT},reuseaddr stdio | mbstream --extract --directory=${KMDB_BACKUP_DIR} &" \
+    || err "failed to create the receiver pipeline"
+  (( step_num +=1 ))
+
+  step "${step_num}" "primary" "${primary}" "Starting the backup stream to replica '${replica}:${KMDB_STREAM_PORT}:${KMDB_BACKUP_DIR}'"
+  exec_pod "${primary}" sh -c "mariadb-backup --parallel=${KMDB_BACKUP_THREADS} --skip-ssl --backup --user=root --password=\${MARIADB_ROOT_PASSWORD} --stream=xbstream | socat -u stdio TCP:${replica_ip}:${KMDB_STREAM_PORT}" \
+    || err "backup stream has failed"
+  (( step_num +=1 ))
+
+  step "${step_num}" "replica" "${replica}" "Preparing the backup in '${KMDB_BACKUP_DIR}'"
+  exec_pod "${replica}" sh -c "mariadb-backup --parallel=${KMDB_BACKUP_THREADS} --skip-ssl --target-dir=${KMDB_BACKUP_DIR} --prepare" \
+    || err "failed to prepare the backup"
+  (( step_num +=1 ))
+
+  step "${step_num}" "replica" "${replica}" "Retrieving the last change GTID"
+  gtid=$(exec_pod "${replica}" sh -c "awk '{print \$NF}' ${KMDB_BACKUP_DIR}/mariadb_backup_binlog_info" | tr -d '\r') \
+    || err "failed to retrieve the last change GTID"
+  [[ -n "${gtid}" ]] || err "failed to retrieve the last change GTID"
+  (( step_num +=1 ))
+
+  step "${step_num}" "replica" "${replica}" "Restoring the backup to '${KMDB_RESTORE_DIR}'"
+  exec_pod "${replica}" sh -c "mariadb-backup --parallel=${KMDB_BACKUP_THREADS} --skip-ssl --target-dir=${KMDB_BACKUP_DIR} --datadir=${KMDB_RESTORE_DIR} --move-back" \
+    || err "failed to restore the backup"
+  (( step_num +=1 ))
+
+  step "${step_num}" "replica" "${replica}" "Moving the restored backup from '${KMDB_RESTORE_DIR}' to '/var/lib/mysql'"
+  exec_pod "${replica}" sh -c "rm -rf /var/lib/mysql/*; mv ${KMDB_RESTORE_DIR}/* /var/lib/mysql" \
+    || err "failed to move the restored backup"
+  (( step_num +=1 ))
+
+  step "${step_num}" "replica" "${replica}" "Removing temporary directories '${KMDB_BACKUP_DIR}' and '${KMDB_RESTORE_DIR}'"
+  exec_pod "${replica}" sh -c "rm -rf ${KMDB_BACKUP_DIR} ${KMDB_RESTORE_DIR}" \
+    || err "failed to remove temporary directories"
+  (( step_num +=1 ))
+
+  step "${step_num}" "replica" "${replica}" "Recreating the pod"
+  "${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" delete pod "${replica}" \
+    || err "failed to delete the pod"
+  "${KMDB_KUBECTL}" --namespace "${KMDB_NAMESPACE}" wait --for condition=ready pod "${replica}" --timeout=3m \
+    || err "the new pod failed to become ready"
+  (( step_num +=1 ))
+
+  step "${step_num}" "replica" "${replica}" "Setting the last change GTID"
+  run_sql_query "${replica}" "RESET REPLICA ALL; SET GLOBAL gtid_slave_pos = \`${gtid}\`;" \
+    || err "failed to set the last change GTID"
+  (( step_num +=1 ))
+
+  step "${step_num}" "cluster" "${mariadb}" "Resuming reconciliation by mariadb-operator"
+  unsuspend_mariadb "${mariadb}"
+  (( step_num +=1 ))
+
+  # allow mariadb-operator to reconcile replication
+  sleep 15
+
+  step "${step_num}" "replica" "${replica}" "Checking replication status"
+  mdb_repl
+
+  } |& tee "${log_file}"
+
+  echo "$(highlight "${CYA}" "⦿ log:") ${log_file}"
+}
+
+main() {
+  parse_input "$@"
+  check_globals
+  check_dependencies
+
+  case "${COMMAND}" in
+    ls)        mdb_ls        ;;
+    status)    mdb_status    ;;
+    suspend)   mdb_suspend   ;;
+    unsuspend) mdb_unsuspend ;;
+    enter)     mdb_enter     ;;
+    sql)       mdb_sql       ;;
+    proc)      mdb_proc      ;;
+    du)        mdb_du        ;;
+    top)       mdb_top       ;;
+    repl)      mdb_repl      ;;
+    prom)      mdb_prom      ;;
+    recreate)  mdb_recreate  ;;
+  esac
+}
+
+main "$@"

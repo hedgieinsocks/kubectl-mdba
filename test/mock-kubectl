@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+
+if [[ "$*" =~ "get mariadbs" ]]; then
+  cat << EOF
+NAME      READY   STATUS    PRIMARY      UPDATES    AGE
+mary-foo  True    Running   mary-foo-0   OnDelete   1d
+mary-boo  True    Running   mary-boo-0   OnDelete   2d
+mary-moo  True    Running   mary-moo-0   OnDelete   3d
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get mariadb mary-ok" ]]; then
+  cat << EOF
+{
+    "spec": {
+        "replication": {
+            "enabled": true,
+            "primary": {
+                "automaticFailover": true,
+                "podIndex": 0
+            }
+        },
+        "suspend": false
+    },
+    "status": {
+        "currentPrimaryPodIndex": 0
+    }
+}
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get mariadb mary-suspended" ]]; then
+  cat << EOF
+{
+    "spec": {
+        "suspend": true
+    }
+}
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get mariadb mary-norepl" ]]; then
+  cat << EOF
+{
+    "spec": {
+        "suspend": false
+    }
+}
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get mariadb mary-switch" ]]; then
+  cat << EOF
+{
+    "spec": {
+        "replication": {
+            "enabled": true,
+            "primary": {
+                "podIndex": 1
+            }
+        },
+        "suspend": false
+    },
+    "status": {
+        "currentPrimaryPodIndex": 0
+    }
+}
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get mariadb mary-fake" ]]; then
+  exit 0
+fi
+
+if [[ "$*" =~ "patch mariadb mary-ok" ]]; then
+  echo "mariadb.k8s.mariadb.com/mary-ok patched"
+  exit 0
+fi
+
+if [[ "$*" =~ "patch mariadb mary-suspended" ]]; then
+  echo "mariadb.k8s.mariadb.com/mary-suspended patched"
+  exit 0
+fi
+
+if [[ "$*" =~ "get pods" ]]; then
+  cat << EOF
+NAME         READY   STATUS    RESTARTS   AGE    IP               NODE              NOMINATED NODE   READINESS GATES
+mary-foo-0   1/1     Running   0          1d     10.152.243.134   database-node-1   <none>           <none>
+mary-foo-1   1/1     Running   0          1d     10.152.98.140    database-node-2   <none>           <none>
+mary-boo-0   1/1     Running   0          2d     10.152.223.102   database-node-3   <none>           <none>
+mary-boo-1   1/1     Running   0          2d     10.152.99.122    database-node-4   <none>           <none>
+mary-moo-0   1/1     Running   0          3d     10.152.243.143   database-node-5   <none>           <none>
+mary-moo-1   1/1     Running   0          3d     10.152.101.109   database-node-6   <none>           <none>
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get pod mary-ok-0" ]]; then
+  cat << EOF
+{
+    "metadata": {
+        "labels": {
+            "app.kubernetes.io/name": "mariadb"
+        }
+    },
+    "status": {
+        "podIP": "10.152.243.134"
+    }
+}
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get pod mary-ok-1" ]]; then
+  cat << EOF
+{
+    "metadata": {
+        "labels": {
+            "app.kubernetes.io/name": "mariadb"
+        }
+    },
+    "status": {
+        "podIP": "10.152.243.135"
+    }
+}
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get pod not-mary-0" ]]; then
+  cat << EOF
+{
+    "metadata": {
+        "labels": {
+            "app.kubernetes.io/name": "hahaha"
+        }
+    },
+    "status": {
+        "podIP": "10.152.243.134"
+    }
+}
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get pod mary-norepl-0" ]]; then
+  cat << EOF
+{
+    "metadata": {
+        "labels": {
+            "app.kubernetes.io/name": "mariadb"
+        }
+    },
+    "status": {
+        "podIP": "10.152.243.134"
+    }
+}
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get pod mary-switch-1" ]]; then
+  cat << EOF
+{
+    "metadata": {
+        "labels": {
+            "app.kubernetes.io/name": "mariadb"
+        }
+    },
+    "status": {
+        "podIP": "10.152.243.134"
+    }
+}
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "get pod mary-fake-0" ]]; then
+  exit 0
+fi
+
+if [[ "$*" =~ "exec mary-ok-0" ]]; then
+  exit 0
+fi
+
+if [[ "$*" =~ "SHOW REPLICA" ]]; then
+  cat << EOF
+Last_SQL_Error:
+Master_Host: mary-ok-0.mary-ok-internal
+Seconds_Behind_Master: 0
+Slave_IO_Running: Yes
+Slave_IO_State: Waiting for master to send event
+Slave_SQL_Running_State: Slave has read all relay log; waiting for more updates
+Slave_SQL_Running: Yes
+EOF
+  exit 0
+fi
+
+if [[ "$*" =~ "rpl_semi_sync_slave_enabled" ]]; then
+  echo "ON"
+  exit 0
+fi
+
+if [[ "$*" =~ "top pods" ]]; then
+  cat << EOF
+POD         NAME                 CPU  MEMORY
+mary-foo-0  mariadb              54m  2678Mi
+mary-foo-1  mariadb              46m  2439Mi
+mary-boo-0  mariadb              54m  2678Mi
+mary-boo-1  mariadb              46m  2439Mi
+mary-moo-0  mariadb              54m  2678Mi
+mary-moo-1  mariadb              46m  2439Mi
+EOF
+  exit 0
+fi
+
+kubectl "$@"

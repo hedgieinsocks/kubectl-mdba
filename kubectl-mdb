@@ -424,7 +424,7 @@ mdb_du() {
   pod="${TARGET}"
 
   get_pod "${pod}"
-  exec_pod "${pod}" sh -c "find /var/lib/mysql/ -maxdepth 1 -type d ! -name 'lost+found' -exec du -sh {} \; | sort -rh | awk -F/ '{print \$1, \$5}'"
+  exec_pod "${pod}" sh -c "find /var/lib/mysql/ -maxdepth 1 -type d ! -name 'lost+found' -exec du --summarize --human-readable {} \; | sort --reverse --human-numeric-sort | awk --field-separator=/ '{print \$1, \$5}'"
 }
 
 #### top [<pod>] - display cpu and ram usage
@@ -529,7 +529,7 @@ mdb_recreate() {
   (( step_num +=1 ))
 
   step "${step_num}" "replica" "${replica}" "Preparing to receive the backup stream from primary '${primary}'"
-  exec_pod "${replica}" nohup sh -c "mkdir -p ${KMDB_BACKUP_DIR} && socat -u TCP-LISTEN:${KMDB_STREAM_PORT},reuseaddr stdio | mbstream --parallel=${KMDB_BACKUP_THREADS} --extract --directory=${KMDB_BACKUP_DIR} &" \
+  exec_pod "${replica}" nohup sh -c "mkdir --parents ${KMDB_BACKUP_DIR} && socat -u TCP-LISTEN:${KMDB_STREAM_PORT},reuseaddr stdio | mbstream --parallel=${KMDB_BACKUP_THREADS} --extract --directory=${KMDB_BACKUP_DIR} &" \
     || err "failed to create the receiver pipeline"
   (( step_num +=1 ))
 
@@ -555,12 +555,12 @@ mdb_recreate() {
   (( step_num +=1 ))
 
   step "${step_num}" "replica" "${replica}" "Moving the restored backup from '${KMDB_RESTORE_DIR}' to '/var/lib/mysql'"
-  exec_pod "${replica}" sh -c "rm -rf /var/lib/mysql/*; mv ${KMDB_RESTORE_DIR}/* /var/lib/mysql" \
+  exec_pod "${replica}" sh -c "rm --recursive --force /var/lib/mysql/*; mv ${KMDB_RESTORE_DIR}/* /var/lib/mysql" \
     || err "failed to move the restored backup"
   (( step_num +=1 ))
 
   step "${step_num}" "replica" "${replica}" "Removing temporary directories '${KMDB_BACKUP_DIR}' and '${KMDB_RESTORE_DIR}'"
-  exec_pod "${replica}" sh -c "rm -rf ${KMDB_BACKUP_DIR} ${KMDB_RESTORE_DIR}" \
+  exec_pod "${replica}" sh -c "rm --recursive --force ${KMDB_BACKUP_DIR} ${KMDB_RESTORE_DIR}" \
     || err "failed to remove temporary directories"
   (( step_num +=1 ))
 

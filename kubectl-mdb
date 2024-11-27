@@ -6,7 +6,7 @@
 [[ -n "${DEBUG}" ]] && set -x
 set -eo pipefail
 
-VERSION="0.0.2-dev"
+VERSION="0.0.2"
 
 KMDB_KUBECTL="${KMDB_KUBECTL:-kubectl}"
 KMDB_NAMESPACE="${KMDB_NAMESPACE:-default}"

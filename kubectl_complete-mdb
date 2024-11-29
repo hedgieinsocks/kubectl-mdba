@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+KMDB_KUBECTL="${KMDB_KUBECTL:-kubectl}"
+KMDB_NAMESPACE="${KMDB_NAMESPACE:-default}"
+
+args=("$@")
+
+if [[ "${#args[@]}" -gt 1 ]]; then
+  if [[ "${args[-2]}" =~ ^(-n|--namespace)$ ]]; then
+    "${KMDB_KUBECTL}" get namespaces --output go-template='{{ range .items }}{{ .metadata.name }}{{"\n"}}{{ end }}'
+    echo :4
+    exit
+  fi
+fi
+
+if [[ "${args[-1]}" =~ ^-.* ]]; then
+  cat << EOF
+-n	set namespace scope
+-v	show plugin version
+-h	show this message
+--namespace	set namespace scope
+--version	show plugin version
+--help	show this message
+EOF
+  exit
+fi
+
+command=$(printf "%s\n" "${args[@]}" | awk '/^(ls|status|suspend|unsuspend|enter|sql|proc|du|top|repl|prom|recreate)$/ {print; exit}')
+
+if [[ -z "${command}" ]]; then
+  cat << EOF
+ls	list mariadbs with their pods
+status	check mariadb status
+suspend	pause mariadb reconciliation
+unsuspend	resume mariadb reconciliation
+enter	exec into pod
+sql	launch mariadb shell
+proc	print processlist
+du	calculate database disk usage
+top	display cpu and ram usage
+repl	check replication status
+prom	promote replica to primary
+recreate	recreate replica from primary
+EOF
+  exit
+fi
+
+namespace=$(printf "%s\n" "${args[@]}" | awk '/^(-n|--namespace)$/ {getline; print; exit}')
+
+case "${command}" in
+  ls|status|suspend|unsuspend)
+    "${KMDB_KUBECTL}" --namespace "${namespace:-${KMDB_NAMESPACE}}" get mariadbs \
+      --output go-template='{{ range .items }}{{ .metadata.name }}{{"\n"}}{{ end }}'
+  ;;
+  enter|sql|proc|du|top)
+    "${KMDB_KUBECTL}" --namespace "${namespace:-${KMDB_NAMESPACE}}" get pods \
+      --selector app.kubernetes.io/name=mariadb \
+      --output go-template='{{ range .items }}{{ .metadata.name }}{{"\n"}}{{ end }}'
+  ;;
+  repl|prom|recreate)
+    "${KMDB_KUBECTL}" --namespace "${namespace:-${KMDB_NAMESPACE}}" get pods \
+      --selector app.kubernetes.io/name=mariadb --selector k8s.mariadb.com/role=replica \
+      --output go-template='{{ range .items }}{{ .metadata.name }}{{"\n"}}{{ end }}'
+  ;;
+esac
+echo :4

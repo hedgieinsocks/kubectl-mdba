@@ -21,7 +21,7 @@ Optionally, you can install the following tools to improve the output of some co
 
 ## Installation
 
-Place `kubectl-mdb` into the directory within your `PATH` (e.g. `~/.local/bin` or `~/.krew/bin`)
+Place `kubectl-mdb` (and optionally `kubectl_complete-mdb`) into the directory within your `PATH` (e.g. `~/.local/bin` or `~/.krew/bin`)
 
 ## Customization
 

@@ -585,7 +585,7 @@ mdb_recreate() {
   step "${step_num}" "replica" "${replica}" "Checking replication status"
   mdb_repl
 
-  } |& tee "${log_file}"
+  } 2>&1 | tee "${log_file}"
 
   echo "$(highlight "${CYA}" "⦿ log:") ${log_file}"
 }

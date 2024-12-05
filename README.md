@@ -17,7 +17,7 @@
 Optionally, you can install the following tools to improve the output of some commands:
 
 * `bat` - https://github.com/sharkdp/bat
-* `yq` - https://github.com/kislyuk/yq
+* `yq` -  https://github.com/mikefarah/yq (or https://github.com/kislyuk/yq)
 
 ## Installation
 

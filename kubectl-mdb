@@ -336,18 +336,17 @@ mdb_ls() {
 #### status <mariadb> - check mariadb status
 # arg: none
 mdb_status() {
-  local mariadb
+  local mariadb yq_option
 
   mariadb="${TARGET}"
 
   get_mariadb "${mariadb}"
 
   if hash yq 2>/dev/null; then
-    yq --yaml-output '.spec.replication.primary, .status' <<< "${MARIADB}" \
-      | sed '/---/d' \
-      | colorize "yaml"
+    yq_option=$(yq --version | grep -q "mikefarah" && echo "--prettyPrint" || echo "--yaml-output")
+    yq "${yq_option}" '.spec.replication.primary * .status' <<< "${MARIADB}" | colorize "yaml"
   else
-    jq --raw-output '[.spec.replication.primary, .status]' <<< "${MARIADB}"
+    jq --raw-output '.spec.replication.primary * .status' <<< "${MARIADB}"
   fi
 }
 

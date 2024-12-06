@@ -27,14 +27,15 @@ Place `kubectl-mdb` (and optionally `kubectl_complete-mdb`) into the directory w
 
 You can `export` the following variables to tweak the plugin's behaviour.
 
-| VARIABLE              | DEFAULT                        | DETAILS                                                                    |
-|-----------------------|--------------------------------|----------------------------------------------------------------------------|
-| `KMDB_KUBECTL`        | `kubectl`                      | kubectl binary name                                                        |
-| `KMDB_NAMESPACE`      | `default`                      | default k8s namespace                                                      |
-| `KMDB_BACKUP_THREADS` | `1`                            | number of threads from `1` to `8` to use for parallel datafiles transfer   |
-| `KMDB_BACKUP_DIR`     | `/var/lib/mysql/.kmdb_backup`  | tmp directory in `/var/lib/mysql/` to accept backup stream                 |
-| `KMDB_RESTORE_DIR`    | `/var/lib/mysql/.kmdb_restore` | tmp directory in `/var/lib/mysql/` for restored backup                     |
-| `KMDB_STREAM_PORT`    | `4444`                         | default port from `1024` to `65535` for backup stream                      |
+| VARIABLE                       | DEFAULT                        | DETAILS                                                                    |
+|--------------------------------|--------------------------------|----------------------------------------------------------------------------|
+| `KMDB_KUBECTL`                 | `kubectl`                      | kubectl binary name                                                        |
+| `KMDB_NAMESPACE`               | `default`                      | default k8s namespace                                                      |
+| `KMDB_BACKUP_THREADS`          | `1`                            | number of threads from `1` to `8` to use for parallel datafiles transfer   |
+| `KMDB_BACKUP_DIR`              | `/var/lib/mysql/.kmdb_backup`  | tmp directory in `/var/lib/mysql/` to accept backup stream                 |
+| `KMDB_RESTORE_DIR`             | `/var/lib/mysql/.kmdb_restore` | tmp directory in `/var/lib/mysql/` for restored backup                     |
+| `KMDB_STREAM_PORT`             | `4444`                         | default port from `1024` to `65535` for backup stream                      |
+| `KMDB_IGNORE_PRIMARY_MISMATCH` | `0`                            | ignore mismatched desired and current primary pod indexes                  |
 
 ## Usage
 
@@ -61,6 +62,7 @@ Commands:
 Flags:
   -n, --namespace <ns>      set namespace scope
   -v, --version             show plugin version
+  -f, --force               ignore primary index mismatch
   -h, --help                show this message
 ```
 

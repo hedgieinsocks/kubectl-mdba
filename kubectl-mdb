@@ -14,6 +14,7 @@ KMDB_BACKUP_THREADS="${KMDB_BACKUP_THREADS:-1}"
 KMDB_BACKUP_DIR="${KMDB_BACKUP_DIR:-/var/lib/mysql/.kmdb_backup}"
 KMDB_RESTORE_DIR="${KMDB_RESTORE_DIR:-/var/lib/mysql/.kmdb_restore}"
 KMDB_STREAM_PORT="${KMDB_STREAM_PORT:-4444}"
+KMDB_IGNORE_PRIMARY_MISMATCH="${KMDB_IGNORE_PRIMARY_MISMATCH:-0}"
 
 # colors
 RED=$(tput setaf 1)
@@ -43,6 +44,7 @@ $(awk '/^####/ {$1=""; print}' "$0" \
 Flags:
   -n, --namespace <ns>      set namespace scope
   -v, --version             show plugin version
+  -f, --force               ignore primary index mismatch
   -h, --help                show this message
 EOF
   exit 0
@@ -58,12 +60,13 @@ show_version() {
 ### validate crucial global vars
 # arg: none
 check_globals() {
-  [[ "${KMDB_BACKUP_THREADS}" =~ ^[1-8]$ ]] || err "KMDB_BACKUP_THREADS is not allowed integer [1..8]: ${KMDB_BACKUP_THREADS}"
+  [[ "${KMDB_BACKUP_THREADS}" =~ ^[1-8]$ ]] || err "KMDB_BACKUP_THREADS is not allowed integer {1..8}: ${KMDB_BACKUP_THREADS}"
+  [[ "${KMDB_IGNORE_PRIMARY_MISMATCH}" =~ ^(0|1)$ ]] || err "KMDB_IGNORE_PRIMARY_MISMATCH is not allowed integer {0..1}: ${KMDB_IGNORE_PRIMARY_MISMATCH}"
 
   [[ "${KMDB_STREAM_PORT}" =~ ^[0-9]+$ \
     && "${KMDB_STREAM_PORT}" -ne 3306
     && "${KMDB_STREAM_PORT}" -gt 1024 \
-    && "${KMDB_STREAM_PORT}" -le 65535 ]] || err "KMDB_STREAM_PORT is not allowed integer [1024..65535]: ${KMDB_STREAM_PORT}"
+    && "${KMDB_STREAM_PORT}" -le 65535 ]] || err "KMDB_STREAM_PORT is not allowed integer {1024..65535}: ${KMDB_STREAM_PORT}"
 
   [[ "${KMDB_BACKUP_DIR}" =~ ^/var/lib/mysql/.* ]] || err "KMDB_BACKUP_DIR is not within /var/lib/mysql/: ${KMDB_BACKUP_DIR}"
   [[ "${KMDB_RESTORE_DIR}" =~ ^/var/lib/mysql/.* ]] || err "KMDB_RESTORE_DIR is not within /var/lib/mysql/: ${KMDB_RESTORE_DIR}"
@@ -149,7 +152,7 @@ confirm() {
 
 ### parse and validate the input
 # arg: $@ - arguments
-# set: COMMAND, KMDB_NAMESPACE, TARGET
+# set: COMMAND, TARGET, KMDB_NAMESPACE, KMDB_IGNORE_PRIMARY_MISMATCH
 parse_input() {
   while (( "$#" )); do
     case "$1" in
@@ -159,6 +162,9 @@ parse_input() {
         else
           err "option $1 requires an argument"
         fi
+        ;;
+      -f|--force)
+        KMDB_IGNORE_PRIMARY_MISMATCH=1
         ;;
       -v|--version)
         show_version
@@ -247,11 +253,15 @@ is_suspended() {
   fi
 }
 
-### check if primary switchover is already requested
+### check if desired and current primary indexes are equal
 # arg: none
-is_switching_primary() {
+is_primary_index_mismatched() {
   if [[ "${MARIADB_DESIRED_PRIMARY_INDEX}" -ne "${MARIADB_CURRENT_PRIMARY_INDEX}" ]]; then
-    err "aborted due to mismatch between the desired '${MARIADB_DESIRED_PRIMARY_INDEX}' and current '${MARIADB_CURRENT_PRIMARY_INDEX}' primary pod indexes"
+    if (( KMDB_IGNORE_PRIMARY_MISMATCH )); then
+      confirm "ignore mismatched desired '${MARIADB_DESIRED_PRIMARY_INDEX}' and current '${MARIADB_CURRENT_PRIMARY_INDEX}' primary pod indexes"
+      return
+    fi
+    err "aborted due to mismatched desired '${MARIADB_DESIRED_PRIMARY_INDEX}' and current '${MARIADB_CURRENT_PRIMARY_INDEX}' primary pod indexes"
   fi
 }
 
@@ -472,7 +482,7 @@ mdb_prom() {
 
   is_replication_enabled
   is_replica "${replica}"
-  is_switching_primary
+  is_primary_index_mismatched
 
   confirm "promote replica pod '${replica}' in '${KMDB_NAMESPACE}' namespace to primary"
 
@@ -494,7 +504,7 @@ mdb_recreate() {
 
   is_replication_enabled
   is_replica "${replica}"
-  is_switching_primary
+  is_primary_index_mismatched
 
   replica_ip="${POD_IP}"
   primary="${mariadb}-${MARIADB_CURRENT_PRIMARY_INDEX}"

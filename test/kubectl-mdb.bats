@@ -49,22 +49,22 @@ setup() {
   [[ "${output}" =~ "requires an argument" ]]
 }
 
-@test "-f: should fail and show 'invalid option' error" {
-  run "${KMDB}" status mary-ok -f
+@test "-b: should fail and show 'invalid option' error" {
+  run "${KMDB}" status mary-ok -b
   echo "${output}"
   [[ "${status}" -eq 1 ]]
   [[ "${output}" =~ "invalid option" ]]
 }
 
-@test "--fake: should fail and show 'invalid option' error" {
-  run "${KMDB}" status mary-ok --fake
+@test "--boo: should fail and show 'invalid option' error" {
+  run "${KMDB}" status mary-ok --boo
   echo "${output}"
   [[ "${status}" -eq 1 ]]
   [[ "${output}" =~ "invalid option" ]]
 }
 
-@test "fake: should fail and show 'invalid command' error" {
-  run "${KMDB}" fake
+@test "boo: should fail and show 'invalid command' error" {
+  run "${KMDB}" boo
   echo "${output}"
   [[ "${status}" -eq 1 ]]
   [[ "${output}" =~ "invalid command" ]]
@@ -276,6 +276,13 @@ setup() {
 
 @test "recreate: should fail and show 'not allowed integer' error 2" {
   KMDB_STREAM_PORT=678 run "${KMDB}" recreate mary-switch-1
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "not allowed integer" ]]
+}
+
+@test "recreate: should fail and show 'not allowed integer' error 3" {
+  KMDB_IGNORE_PRIMARY_MISMATCH=21 run "${KMDB}" recreate mary-switch-1
   echo "${output}"
   [[ "${status}" -eq 1 ]]
   [[ "${output}" =~ "not allowed integer" ]]

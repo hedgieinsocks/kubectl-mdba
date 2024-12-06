@@ -41,7 +41,7 @@ $(awk '/^####/ {$1=""; print}' "$0" \
 )
 
 Flags:
-  -n, --namespace string    set namespace scope
+  -n, --namespace <ns>      set namespace scope
   -v, --version             show plugin version
   -h, --help                show this message
 EOF

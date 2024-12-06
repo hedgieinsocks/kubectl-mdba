@@ -59,7 +59,7 @@ Commands:
   recreate <replica>        recreate replica from primary
 
 Flags:
-  -n, --namespace string    set namespace scope
+  -n, --namespace <ns>      set namespace scope
   -v, --version             show plugin version
   -h, --help                show this message
 ```

@@ -164,7 +164,7 @@ parse_input() {
         fi
         ;;
       -f|--force)
-        KMDB_IGNORE_PRIMARY_MISMATCH=1
+        KMDB_IGNORE_PRIMARY_MISMATCH=1; shift
         ;;
       -v|--version)
         show_version

@@ -7,11 +7,11 @@ setup() {
   bat() { cat; }; export -f bat
 }
 
-@test "no args: should fail and show 'no command provided' error" {
+@test "no args: should succeed and show help" {
   run "${KMDB}"
   echo "${output}"
-  [[ "${status}" -eq 1 ]]
-  [[ "${output}" =~ "no command provided" ]]
+  [[ "${status}" -eq 0 ]]
+  [[ "${lines[0]}" =~ "kubectl mdb helps" ]]
 }
 
 @test "-h: should succeed and show help" {

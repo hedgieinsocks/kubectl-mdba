@@ -195,7 +195,7 @@ parse_input() {
         ;;
     esac
   done
-  [[ -n "${COMMAND}" ]] || err "no command provided"
+  [[ -n "${COMMAND}" ]] || show_help
   [[ -n "${TARGET}" || "${COMMAND}" =~ ^(ls|top)$ ]] || err "no target provided"
 }
 

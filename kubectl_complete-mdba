@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
-KMDB_KUBECTL="${KMDB_KUBECTL:-kubectl}"
-KMDB_NAMESPACE="${KMDB_NAMESPACE:-default}"
+KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
+KMDBA_NAMESPACE="${KMDBA_NAMESPACE:-default}"
 
 args=("$@")
 
 if [[ "${#args[@]}" -gt 1 ]]; then
   if [[ "${args[-2]}" =~ ^(-n|--namespace)$ ]]; then
-    "${KMDB_KUBECTL}" get namespaces --output go-template='{{ range .items }}{{ .metadata.name }}{{"\n"}}{{ end }}'
+    "${KMDBA_KUBECTL}" get namespaces --output go-template='{{ range .items }}{{ .metadata.name }}{{"\n"}}{{ end }}'
     echo :4
     exit
   fi
@@ -49,16 +49,16 @@ namespace=$(printf "%s\n" "${args[@]}" | awk '/^(-n|--namespace)$/ {getline; pri
 
 case "${command}" in
   ls|status|suspend|unsuspend)
-    "${KMDB_KUBECTL}" --namespace "${namespace:-${KMDB_NAMESPACE}}" get mariadbs \
+    "${KMDBA_KUBECTL}" --namespace "${namespace:-${KMDBA_NAMESPACE}}" get mariadbs \
       --output go-template='{{ range .items }}{{ .metadata.name }}{{"\n"}}{{ end }}'
   ;;
   enter|sql|proc|du|top)
-    "${KMDB_KUBECTL}" --namespace "${namespace:-${KMDB_NAMESPACE}}" get pods \
+    "${KMDBA_KUBECTL}" --namespace "${namespace:-${KMDBA_NAMESPACE}}" get pods \
       --selector app.kubernetes.io/name=mariadb \
       --output go-template='{{ range .items }}{{ .metadata.name }}{{"\n"}}{{ end }}'
   ;;
   repl|prom|recreate)
-    "${KMDB_KUBECTL}" --namespace "${namespace:-${KMDB_NAMESPACE}}" get pods \
+    "${KMDBA_KUBECTL}" --namespace "${namespace:-${KMDBA_NAMESPACE}}" get pods \
       --selector app.kubernetes.io/name=mariadb --selector k8s.mariadb.com/role=replica \
       --output go-template='{{ range .items }}{{ .metadata.name }}{{"\n"}}{{ end }}'
   ;;

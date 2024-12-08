@@ -1,8 +1,8 @@
-![kubectl-mdb project cover](img/cover.png)
+![kubectl-mdba project cover](img/cover.png)
 
-# 🦭 kubectl-mdb
+# 🦭 kubectl-mdba
 
-`kubectl-mdb` is a `kubectl` plugin that helps interact with [mariadb-operator](https://github.com/mariadb-operator) semi-sync replication clusters.
+`kubectl-mdba` (mariadb administrator) is a `kubectl` plugin that helps manage [mariadb-operator](https://github.com/mariadb-operator) semi-sync replication clusters
 
 ## Disclaimer
 
@@ -21,7 +21,7 @@ Optionally, you can install the following tools to improve the output of some co
 
 ## Installation
 
-Place `kubectl-mdb` (and optionally `kubectl_complete-mdb`) into the directory within your `PATH` (e.g. `~/.local/bin` or `~/.krew/bin`)
+Place `kubectl-mdba` (and optionally `kubectl_complete-mdba`) into the directory within your `PATH` (e.g. `~/.local/bin` or `~/.krew/bin`)
 
 ## Customization
 
@@ -29,21 +29,21 @@ You can `export` the following variables to tweak the plugin's behaviour.
 
 | VARIABLE                       | DEFAULT                        | DETAILS                                                                    |
 |--------------------------------|--------------------------------|----------------------------------------------------------------------------|
-| `KMDB_KUBECTL`                 | `kubectl`                      | kubectl binary name                                                        |
-| `KMDB_NAMESPACE`               | `default`                      | default k8s namespace                                                      |
-| `KMDB_BACKUP_THREADS`          | `1`                            | number of threads from `1` to `8` to use for parallel datafiles transfer   |
-| `KMDB_BACKUP_DIR`              | `/var/lib/mysql/.kmdb_backup`  | tmp directory in `/var/lib/mysql/` to accept backup stream                 |
-| `KMDB_RESTORE_DIR`             | `/var/lib/mysql/.kmdb_restore` | tmp directory in `/var/lib/mysql/` for restored backup                     |
-| `KMDB_STREAM_PORT`             | `4444`                         | default port from `1024` to `65535` for backup stream                      |
-| `KMDB_IGNORE_PRIMARY_MISMATCH` | `0`                            | ignore mismatched desired and current primary pod indexes                  |
+| `KMDBA_KUBECTL`                 | `kubectl`                      | kubectl binary name                                                        |
+| `KMDBA_NAMESPACE`               | `default`                      | default k8s namespace                                                      |
+| `KMDBA_BACKUP_THREADS`          | `1`                            | number of threads from `1` to `8` to use for parallel datafiles transfer   |
+| `KMDBA_BACKUP_DIR`              | `/var/lib/mysql/.kmdb_backup`  | tmp directory in `/var/lib/mysql/` to accept backup stream                 |
+| `KMDBA_RESTORE_DIR`             | `/var/lib/mysql/.kmdb_restore` | tmp directory in `/var/lib/mysql/` for restored backup                     |
+| `KMDBA_STREAM_PORT`             | `4444`                         | default port from `1024` to `65535` for backup stream                      |
+| `KMDBA_IGNORE_PRIMARY_MISMATCH` | `0`                            | ignore mismatched desired and current primary pod indexes                  |
 
 ## Usage
 
 ```
-kubectl mdb helps interact with mariadb-operator semi-sync replication clusters
+kubectl mdba helps manage mariadb-operator semi-sync replication clusters
 
 Usage:
-  kubectl mdb <command> [<target>]
+  kubectl mdba <command> [<target>]
 
 Commands:
   ls [<mariadb>]            list mariadbs with their pods

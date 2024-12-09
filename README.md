@@ -21,7 +21,19 @@ Optionally, you can install the following tools to improve the output of some co
 
 ## Installation
 
-Place `kubectl-mdba` (and optionally `kubectl_complete-mdba`) into the directory within your `PATH` (e.g. `~/.local/bin` or `~/.krew/bin`)
+### Krew
+
+```sh
+❯ kubectl krew install mdba
+```
+
+### Manual
+
+Place `kubectl-mdba` into the directory within your `$PATH` (e.g. `~/.local/bin`)
+
+### Completion
+
+Place `kubectl_complete-mdba` into the directory within your `$PATH` (e.g. `~/.local/bin`)
 
 ## Customization
 

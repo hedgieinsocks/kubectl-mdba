@@ -15,12 +15,20 @@ fi
 
 if [[ "${args[-1]}" =~ ^-.* ]]; then
   cat << EOF
--n	set namespace scope
--v	show plugin version
 -h	show this message
---namespace	set namespace scope
---version	show plugin version
+-v	show plugin version
+-n	set namespace scope
+-f	ignore primary index mismatch
+-p	port for backup stream
+-t	parallel threads for datafiles transfer
+-s	recreate step to start from
 --help	show this message
+--version	show plugin version
+--namespace	set namespace scope
+--force	ignore primary index mismatch
+--port	port for backup stream
+--threads	parallel threads for datafiles transfer
+--step	recreate step to start from
 EOF
   exit
 fi

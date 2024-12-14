@@ -330,7 +330,7 @@ run_sql_query() {
   pod="$1"; shift
   sql_query="$1"; shift
 
-  exec_pod "${pod}" sh -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --execute='${sql_query}'"
+  exec_pod "${pod}" bash -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --execute='${sql_query}'"
 }
 
 ### suspend mariadb reconciliation
@@ -441,7 +441,7 @@ mdb_sql() {
   pod="${TARGET}"
 
   get_pod "${pod}"
-  exec_pod "${pod}" sh -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD}"
+  exec_pod "${pod}" bash -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD}"
 }
 
 #### proc <pod> - print processlist
@@ -463,7 +463,7 @@ mdb_du() {
   pod="${TARGET}"
 
   get_pod "${pod}"
-  exec_pod "${pod}" sh -c "find /var/lib/mysql/ -maxdepth 1 -type d ! -name 'lost+found' -exec du --summarize --human-readable {} \; | sort --reverse --human-numeric-sort | awk --field-separator=/ '{print \$1, \$5}'"
+  exec_pod "${pod}" bash -o pipefail -c "find /var/lib/mysql/ -maxdepth 1 -type d ! -name 'lost+found' -exec du --summarize --human-readable {} \; | sort --reverse --human-numeric-sort | awk --field-separator=/ '{print \$1, \$5}'"
 }
 
 #### top [<pod>] - display cpu and ram usage
@@ -551,9 +551,9 @@ mdb_recreate() {
   # step 1
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Looking for leftovers from previous attempts"
-    exec_pod "${replica}" sh -c "test ! -e ${KMDBA_BACKUP_DIR}" \
+    exec_pod "${replica}" bash -c "test ! -e ${KMDBA_BACKUP_DIR}" \
       || err "please remove '${KMDBA_BACKUP_DIR}' directory"
-    exec_pod "${replica}" sh -c "test ! -e ${KMDBA_RESTORE_DIR}" \
+    exec_pod "${replica}" bash -c "test ! -e ${KMDBA_RESTORE_DIR}" \
       || err "please remove '${KMDBA_RESTORE_DIR}' directory"
   fi
   (( step_num +=1 ))
@@ -570,7 +570,7 @@ mdb_recreate() {
   # step 3
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Dropping databases to free up disk space"
-    exec_pod "${replica}" sh -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --batch --skip-column-names --execute='SHOW DATABASES WHERE Database NOT IN (\"information_schema\", \"performance_schema\", \"mysql\", \"sys\");' \
+    exec_pod "${replica}" bash -o pipefail -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --batch --skip-column-names --execute='SHOW DATABASES WHERE Database NOT IN (\"information_schema\", \"performance_schema\", \"mysql\", \"sys\");' \
       | xargs --no-run-if-empty --replace mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --execute='DROP DATABASE \`{}\`;'" \
       || err "failed to drop databases"
   fi
@@ -579,7 +579,7 @@ mdb_recreate() {
   # step 4
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Preparing to receive the backup stream from primary '${primary}'"
-    exec_pod "${replica}" nohup sh -c "mkdir --parents ${KMDBA_BACKUP_DIR} && socat -u TCP-LISTEN:${KMDBA_STREAM_PORT},reuseaddr stdio | mbstream --parallel=${KMDBA_BACKUP_THREADS} --extract --directory=${KMDBA_BACKUP_DIR} &" \
+    exec_pod "${replica}" nohup bash -o pipefail -c "mkdir --parents ${KMDBA_BACKUP_DIR} && socat -u TCP-LISTEN:${KMDBA_STREAM_PORT},reuseaddr stdio | mbstream --parallel=${KMDBA_BACKUP_THREADS} --extract --directory=${KMDBA_BACKUP_DIR} &" \
       || err "failed to create the receiver pipeline"
   fi
   (( step_num +=1 ))
@@ -587,7 +587,7 @@ mdb_recreate() {
   # step 5
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "primary" "${primary}" "Starting the backup stream to replica '${replica}:${KMDBA_STREAM_PORT}:${KMDBA_BACKUP_DIR}'"
-    exec_pod "${primary}" sh -c "mariadb-backup --parallel=${KMDBA_BACKUP_THREADS} --skip-ssl --backup --user=root --password=\${MARIADB_ROOT_PASSWORD} --stream=xbstream | socat -u stdio TCP:${replica_ip}:${KMDBA_STREAM_PORT}" \
+    exec_pod "${primary}" bash -o pipefail -c "mariadb-backup --parallel=${KMDBA_BACKUP_THREADS} --skip-ssl --backup --user=root --password=\${MARIADB_ROOT_PASSWORD} --stream=xbstream | socat -u stdio TCP:${replica_ip}:${KMDBA_STREAM_PORT}" \
       || err "backup stream has failed"
   fi
   (( step_num +=1 ))
@@ -595,7 +595,7 @@ mdb_recreate() {
   # step 6
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Preparing the backup in '${KMDBA_BACKUP_DIR}'"
-    exec_pod "${replica}" sh -c "mariadb-backup --skip-ssl --target-dir=${KMDBA_BACKUP_DIR} --prepare" \
+    exec_pod "${replica}" bash -c "mariadb-backup --skip-ssl --target-dir=${KMDBA_BACKUP_DIR} --prepare" \
       || err "failed to prepare the backup"
   fi
   (( step_num +=1 ))
@@ -603,7 +603,7 @@ mdb_recreate() {
   # step 7
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Retrieving the last change GTID"
-    KMDBA_GTID=$(exec_pod "${replica}" sh -c "awk '{print \$NF}' ${KMDBA_BACKUP_DIR}/mariadb_backup_binlog_info" | tr -d '\r') \
+    KMDBA_GTID=$(exec_pod "${replica}" bash -c "awk '{print \$NF}' ${KMDBA_BACKUP_DIR}/mariadb_backup_binlog_info" | tr -d '\r') \
       || err "failed to retrieve the last change GTID"
     [[ -n "${KMDBA_GTID}" ]] || err "failed to retrieve the last change GTID"
   fi
@@ -612,7 +612,7 @@ mdb_recreate() {
   # step 8
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Restoring the backup to '${KMDBA_RESTORE_DIR}'"
-    exec_pod "${replica}" sh -c "mariadb-backup --skip-ssl --target-dir=${KMDBA_BACKUP_DIR} --datadir=${KMDBA_RESTORE_DIR} --move-back" \
+    exec_pod "${replica}" bash -c "mariadb-backup --skip-ssl --target-dir=${KMDBA_BACKUP_DIR} --datadir=${KMDBA_RESTORE_DIR} --move-back" \
       || err "failed to restore the backup"
   fi
   (( step_num +=1 ))
@@ -620,7 +620,7 @@ mdb_recreate() {
   # step 9
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Moving the restored backup from '${KMDBA_RESTORE_DIR}' to '/var/lib/mysql'"
-    exec_pod "${replica}" sh -c "rm --recursive --force /var/lib/mysql/*; mv ${KMDBA_RESTORE_DIR}/* /var/lib/mysql" \
+    exec_pod "${replica}" bash -c "rm --recursive --force /var/lib/mysql/*; mv ${KMDBA_RESTORE_DIR}/* /var/lib/mysql" \
       || err "failed to move the restored backup"
   fi
   (( step_num +=1 ))
@@ -628,7 +628,7 @@ mdb_recreate() {
   # step 10
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Removing temporary directories '${KMDBA_BACKUP_DIR}' and '${KMDBA_RESTORE_DIR}'"
-    exec_pod "${replica}" sh -c "rm --recursive --force ${KMDBA_BACKUP_DIR} ${KMDBA_RESTORE_DIR}" \
+    exec_pod "${replica}" bash -c "rm --recursive --force ${KMDBA_BACKUP_DIR} ${KMDBA_RESTORE_DIR}" \
       || err "failed to remove temporary directories"
   fi
   (( step_num +=1 ))

@@ -590,7 +590,7 @@ mdb_recreate() {
   # step 5
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "primary" "${primary}" "Starting the backup stream to replica '${replica}:${KMDBA_STREAM_PORT}:${KMDBA_BACKUP_DIR}'"
-    exec_pod "${primary}" bash -o pipefail -c "mariadb-backup --parallel=${KMDBA_BACKUP_THREADS} --skip-ssl --backup --user=root --password=\${MARIADB_ROOT_PASSWORD} --stream=xbstream | socat -u stdio TCP:${replica_ip}:${KMDBA_STREAM_PORT}" \
+    exec_pod "${primary}" nohup bash -o pipefail -c "mariadb-backup --parallel=${KMDBA_BACKUP_THREADS} --skip-ssl --backup --user=root --password=\${MARIADB_ROOT_PASSWORD} --stream=xbstream | socat -u stdio TCP:${replica_ip}:${KMDBA_STREAM_PORT}" \
       || err "backup stream has failed"
   fi
   (( step_num +=1 ))

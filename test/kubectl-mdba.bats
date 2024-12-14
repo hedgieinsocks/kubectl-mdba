@@ -288,6 +288,20 @@ setup() {
   [[ "${output}" =~ "not allowed integer" ]]
 }
 
+@test "recreate: should fail and show 'not allowed integer' error 4" {
+  KMDBA_RECREATE_STEP=16 run "${KMDBA}" recreate mary-switch-1
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "not allowed integer" ]]
+}
+
+@test "recreate: should fail and show 'is not set' error" {
+  KMDBA_GTID="" KMDBA_RECREATE_STEP=8 run "${KMDBA}" recreate mary-switch-1
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "is not set" ]]
+}
+
 @test "recreate: should fail and show 'not within /var/lib/mysql/' error 1" {
   KMDBA_BACKUP_DIR=/var/lib/tmp/backup run "${KMDBA}" recreate mary-switch-1
   echo "${output}"

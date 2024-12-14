@@ -39,10 +39,11 @@ Place `kubectl_complete-mdba` into the directory within your `$PATH` (e.g. `~/.l
 
 You can `export` the following variables to tweak the plugin's behaviour.
 
-| VARIABLE                       | DEFAULT                        | DETAILS                                                                    |
-|--------------------------------|--------------------------------|----------------------------------------------------------------------------|
+| VARIABLE                        | DEFAULT                        | DETAILS                                                                    |
+|---------------------------------|--------------------------------|----------------------------------------------------------------------------|
 | `KMDBA_KUBECTL`                 | `kubectl`                      | kubectl binary name                                                        |
 | `KMDBA_NAMESPACE`               | `default`                      | default k8s namespace                                                      |
+| `KMDBA_RECREATE_STEP`           | `1`                            | initial step number from `1` to `14` for replica recreation                |
 | `KMDBA_BACKUP_THREADS`          | `1`                            | number of threads from `1` to `8` to use for parallel datafiles transfer   |
 | `KMDBA_BACKUP_DIR`              | `/var/lib/mysql/.kmdb_backup`  | tmp directory in `/var/lib/mysql/` to accept backup stream                 |
 | `KMDBA_RESTORE_DIR`             | `/var/lib/mysql/.kmdb_restore` | tmp directory in `/var/lib/mysql/` for restored backup                     |

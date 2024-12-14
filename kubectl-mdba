@@ -10,12 +10,14 @@ VERSION="0.0.5-dev"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
 KMDBA_NAMESPACE="${KMDBA_NAMESPACE:-default}"
-KMDBA_RECREATE_STEP="${KMDBA_RECREATE_STEP:-1}"
-KMDBA_BACKUP_THREADS="${KMDBA_BACKUP_THREADS:-1}"
+
 KMDBA_BACKUP_DIR="${KMDBA_BACKUP_DIR:-/var/lib/mysql/.kmdba_backup}"
 KMDBA_RESTORE_DIR="${KMDBA_RESTORE_DIR:-/var/lib/mysql/.kmdba_restore}"
-KMDBA_STREAM_PORT="${KMDBA_STREAM_PORT:-4444}"
+
 KMDBA_IGNORE_PRIMARY_MISMATCH="${KMDBA_IGNORE_PRIMARY_MISMATCH:-0}"
+KMDBA_STREAM_PORT="${KMDBA_STREAM_PORT:-4444}"
+KMDBA_BACKUP_THREADS="${KMDBA_BACKUP_THREADS:-1}"
+KMDBA_RECREATE_STEP="${KMDBA_RECREATE_STEP:-1}"
 
 # colors
 RED=$(tput setaf 1)
@@ -161,7 +163,8 @@ confirm() {
 
 ### parse and validate the input
 # arg: $@ - arguments
-# set: COMMAND, TARGET, KMDBA_NAMESPACE, KMDBA_IGNORE_PRIMARY_MISMATCH
+# set: COMMAND, TARGET, KMDBA_NAMESPACE, KMDBA_IGNORE_PRIMARY_MISMATCH,
+#      KMDBA_STREAM_PORT, KMDBA_BACKUP_THREADS, KMDBA_RECREATE_STEP
 parse_input() {
   while (( "$#" )); do
     case "$1" in
@@ -383,7 +386,7 @@ mdb_status() {
   get_mariadb "${mariadb}"
 
   if hash yq 2>/dev/null; then
-    yq_option=$(yq --version | grep -q "mikefarah" && echo "--prettyPrint" || echo "--yaml-output")
+    yq_option=$(yq --version | grep --quiet "mikefarah" && echo "--prettyPrint" || echo "--yaml-output")
     yq "${yq_option}" '.spec.replication.primary * .status' <<< "${MARIADB}" | colorize "yaml"
   else
     jq --raw-output '.spec.replication.primary * .status' <<< "${MARIADB}"

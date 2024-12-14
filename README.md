@@ -45,10 +45,10 @@ You can `export` the following variables to tweak the plugin's behaviour.
 | `KMDBA_NAMESPACE`               | `default`                      | default k8s namespace                                                      |
 | `KMDBA_RECREATE_STEP`           | `1`                            | initial step number from `1` to `14` for replica recreation                |
 | `KMDBA_BACKUP_THREADS`          | `1`                            | number of threads from `1` to `8` to use for parallel datafiles transfer   |
-| `KMDBA_BACKUP_DIR`              | `/var/lib/mysql/.kmdb_backup`  | tmp directory in `/var/lib/mysql/` to accept backup stream                 |
-| `KMDBA_RESTORE_DIR`             | `/var/lib/mysql/.kmdb_restore` | tmp directory in `/var/lib/mysql/` for restored backup                     |
 | `KMDBA_STREAM_PORT`             | `4444`                         | default port from `1024` to `65535` for backup stream                      |
 | `KMDBA_IGNORE_PRIMARY_MISMATCH` | `0`                            | ignore mismatched desired and current primary pod indexes                  |
+| `KMDBA_BACKUP_DIR`              | `/var/lib/mysql/.kmdb_backup`  | tmp directory in `/var/lib/mysql/` to accept backup stream                 |
+| `KMDBA_RESTORE_DIR`             | `/var/lib/mysql/.kmdb_restore` | tmp directory in `/var/lib/mysql/` for restored backup                     |
 
 ## Usage
 
@@ -73,10 +73,13 @@ Commands:
   recreate <replica>        recreate replica from primary
 
 Flags:
-  -n, --namespace <ns>      set namespace scope
-  -v, --version             show plugin version
-  -f, --force               ignore primary index mismatch
   -h, --help                show this message
+  -v, --version             show plugin version
+  -n, --namespace <ns>      set namespace scope
+  -f, --force               ignore primary index mismatch
+  -p, --port <num>          port for backup stream (default: 4444)
+  -t, --threads <num>       parallel threads for datafiles transfer (default: 1)
+  -s, --step <num>          recreate step to start from (default: 1)
 ```
 
 ## Links

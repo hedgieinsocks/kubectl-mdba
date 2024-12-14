@@ -43,10 +43,13 @@ $(awk '/^####/ {$1=""; print}' "$0" \
 )
 
 Flags:
-  -n, --namespace <ns>      set namespace scope
-  -v, --version             show plugin version
-  -f, --force               ignore primary index mismatch
   -h, --help                show this message
+  -v, --version             show plugin version
+  -n, --namespace <ns>      set namespace scope
+  -f, --force               ignore primary index mismatch
+  -p, --port <num>          port for backup stream (default: ${KMDBA_STREAM_PORT})
+  -t, --threads <num>       parallel threads for datafiles transfer (default: ${KMDBA_BACKUP_THREADS})
+  -s, --step <num>          recreate step to start from (default: ${KMDBA_RECREATE_STEP})
 EOF
   exit 0
 }
@@ -171,6 +174,27 @@ parse_input() {
         ;;
       -f|--force)
         KMDBA_IGNORE_PRIMARY_MISMATCH=1; shift
+        ;;
+      -p|--port)
+        if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
+          KMDBA_STREAM_PORT="$2"; shift 2
+        else
+          err "option $1 requires an argument"
+        fi
+        ;;
+      -t|--threads)
+        if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
+          KMDBA_BACKUP_THREADS="$2"; shift 2
+        else
+          err "option $1 requires an argument"
+        fi
+        ;;
+      -s|--step)
+        if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
+          KMDBA_RECREATE_STEP="$2"; shift 2
+        else
+          err "option $1 requires an argument"
+        fi
         ;;
       -v|--version)
         show_version

@@ -496,7 +496,7 @@ mdb_repl() {
   run_sql_query "${replica}" 'SHOW VARIABLES LIKE "rpl_semi_sync_slave_enabled";' \
     | grep --quiet ON || err "semi-sync replication is disabled on this pod"
   run_sql_query "${replica}" 'SHOW REPLICA "mariadb-operator" STATUS\G' \
-    | awk '/Master_Host|Seconds_Behind_Master|Slave_IO|Slave_SQL|Last_SQL_Error/ {$1=$1; print}' \
+    | awk '/Master_Host|Seconds_Behind_Master|Slave_IO|Slave_SQL|Last_IO_Error|Last_SQL_Error/ {$1=$1; print}' \
     | sort \
     | colorize "yaml"
 }

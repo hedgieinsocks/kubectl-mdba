@@ -455,7 +455,7 @@ mdb_proc() {
   pod="${TARGET}"
 
   get_pod "${pod}"
-  run_sql_query "${pod}" "SHOW PROCESSLIST;"
+  run_sql_query "${pod}" 'SHOW PROCESSLIST;'
 }
 
 #### du <pod> - calculate database disk usage
@@ -495,7 +495,7 @@ mdb_repl() {
 
   run_sql_query "${replica}" 'SHOW VARIABLES LIKE "rpl_semi_sync_slave_enabled";' \
     | grep --quiet ON || err "semi-sync replication is disabled on this pod"
-  run_sql_query "${replica}" 'SHOW REPLICA "mariadb-operator" STATUS\G' \
+  run_sql_query "${replica}" 'SHOW SLAVE "mariadb-operator" STATUS\G' \
     | awk '/Master_Host|Seconds_Behind_Master|Slave_IO|Slave_SQL|Last_IO_Error|Last_SQL_Error/ {$1=$1; print}' \
     | sort \
     | colorize "yaml"
@@ -655,7 +655,7 @@ mdb_recreate() {
   # step 12
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Setting the last change GTID"
-    run_sql_query "${replica}" "RESET REPLICA ALL; SET GLOBAL gtid_slave_pos = \`${KMDBA_GTID}\`;" \
+    run_sql_query "${replica}" "RESET SLAVE ALL; SET GLOBAL gtid_slave_pos = \`${KMDBA_GTID}\`;" \
       || err "failed to set the last change GTID"
   fi
   (( step_num +=1 ))

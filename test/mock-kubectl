@@ -190,7 +190,7 @@ if [[ "$*" =~ "exec mary-ok-0" ]]; then
   exit 0
 fi
 
-if [[ "$*" =~ "SHOW REPLICA" ]]; then
+if [[ "$*" =~ "SHOW SLAVE" ]]; then
   cat << EOF
 Last_SQL_Error:
 Master_Host: mary-ok-0.mary-ok-internal

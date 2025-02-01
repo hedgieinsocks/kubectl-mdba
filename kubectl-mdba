@@ -561,9 +561,11 @@ mdb_recreate() {
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Looking for leftovers from previous attempts"
     exec_pod "${replica}" bash -c "test ! -e ${KMDBA_BACKUP_DIR}" \
-      || err "please remove '${KMDBA_BACKUP_DIR}' directory"
+      || err "please remove '${KMDBA_BACKUP_DIR}' directory in the pod"
     exec_pod "${replica}" bash -c "test ! -e ${KMDBA_RESTORE_DIR}" \
-      || err "please remove '${KMDBA_RESTORE_DIR}' directory"
+      || err "please remove '${KMDBA_RESTORE_DIR}' directory in the pod"
+    exec_pod "${replica}" bash -c "test ! \$(pgrep socat)" \
+      || err "please kill 'socat' process running in the pod"
   fi
   (( step_num +=1 ))
 

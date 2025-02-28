@@ -522,8 +522,9 @@ mdb_prom() {
   "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" patch mariadb "${mariadb}" --type json \
     --patch='[{"op": "replace", "path": "/spec/replication/primary/podIndex", "value": '"${replica_index}"'}]'
 
-  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" wait --for condition=ready mariadb "${mariadb}" --timeout=1m \
-    || err "mariadb '${mariadb}' in '${KMDBA_NAMESPACE}' namespace is not healthy after the requested switchover"
+  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" wait mariadb "${mariadb}" --timeout=1m \
+    --for jsonpath='{.status.currentPrimary}'="${replica}" \
+      || err "pod ${replica} from mariadb '${mariadb}' in '${KMDBA_NAMESPACE}' namespace is not primary yet"
 
   # https://github.com/mariadb-operator/mariadb-operator/issues/1116
   run_sql_query "${replica}" 'RESET SLAVE "mariadb-operator" ALL;'

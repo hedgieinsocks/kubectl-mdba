@@ -49,6 +49,13 @@ setup() {
   [[ "${output}" =~ "requires an argument" ]]
 }
 
+@test "--namespace: should fail and show 'requires an argument' error" {
+  run "${KMDBA}" status mary-ok --namespace
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
 @test "-b: should fail and show 'invalid option' error" {
   run "${KMDBA}" status mary-ok -b
   echo "${output}"
@@ -314,4 +321,67 @@ setup() {
   echo "${output}"
   [[ "${status}" -eq 1 ]]
   [[ "${output}" =~ "not within /var/lib/mysql/" ]]
+}
+
+@test "recreate: -p: should fail and show 'requires an argument' error" {
+  run "${KMDBA}" recreate mary-ok-0 -p
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "recreate: --port: should fail and show 'requires an argument' error" {
+  run "${KMDBA}" recreate mary-ok-0 --port
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "recreate: -p: should fail and show 'not allowed integer' error" {
+  run "${KMDBA}" recreate mary-ok-0 -p 5
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "not allowed integer" ]]
+}
+
+@test "recreate: -t: should fail and show 'requires an argument' error" {
+  run "${KMDBA}" recreate mary-ok-0 -t
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "recreate: --threads: should fail and show 'requires an argument' error" {
+  run "${KMDBA}" recreate mary-ok-0 --threads
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "recreate: -t: should fail and show 'not allowed integer' error" {
+  run "${KMDBA}" recreate mary-ok-0 -t 17
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "not allowed integer" ]]
+}
+
+@test "recreate: -s: should fail and show 'requires an argument' error" {
+  run "${KMDBA}" recreate mary-ok-0 -s
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "recreate: --step: should fail and show 'requires an argument' error" {
+  run "${KMDBA}" recreate mary-ok-0 --step
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "recreate: -s: should fail and show 'not allowed integer' error" {
+  run "${KMDBA}" recreate mary-ok-0 -s 17
+  echo "${output}"
+  [[ "${status}" -eq 1 ]]
+  [[ "${output}" =~ "not allowed integer" ]]
 }

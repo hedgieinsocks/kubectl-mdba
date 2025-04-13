@@ -220,5 +220,3 @@ mary-moo-1  mariadb              46m  2439Mi
 EOF
   exit 0
 fi
-
-kubectl "$@"

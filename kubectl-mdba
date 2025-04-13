@@ -79,7 +79,7 @@ check_globals() {
   fi
 
   [[ "${KMDBA_STREAM_PORT}" =~ ^[0-9]+$ \
-    && "${KMDBA_STREAM_PORT}" -ne 3306
+    && "${KMDBA_STREAM_PORT}" -ne 3306 \
     && "${KMDBA_STREAM_PORT}" -gt 1024 \
     && "${KMDBA_STREAM_PORT}" -le 65535 ]] || err "KMDBA_STREAM_PORT is not allowed integer {1024..65535}: ${KMDBA_STREAM_PORT}"
 
@@ -270,9 +270,9 @@ get_mariadb() {
   MARIADB_DESIRED_PRIMARY_INDEX=$(jq --raw-output '.spec.replication.primary.podIndex' <<< "${MARIADB}")
 }
 
-### check if semi-sync replication is enabled
+### assert that semi-sync replication is enabled
 # arg: none
-is_replication_enabled() {
+assert_replication_enabled() {
   local mariadb
 
   mariadb="${KMDBA_TARGET}"
@@ -506,7 +506,7 @@ mdba_repl() {
   get_pod "${replica}"
   get_mariadb "${mariadb}"
 
-  is_replication_enabled
+  assert_replication_enabled
   is_replica "${replica}"
 
   run_sql_query "${replica}" 'SHOW VARIABLES LIKE "rpl_semi_sync_slave_enabled";' \
@@ -529,7 +529,7 @@ mdba_prom() {
   get_pod "${replica}"
   get_mariadb "${mariadb}"
 
-  is_replication_enabled
+  assert_replication_enabled
   is_replica "${replica}"
   is_primary_index_mismatched
 
@@ -555,7 +555,7 @@ mdba_recreate() {
   get_pod "${replica}"
   get_mariadb "${mariadb}"
 
-  is_replication_enabled
+  assert_replication_enabled
   is_replica "${replica}"
   is_primary_index_mismatched
 
@@ -718,4 +718,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

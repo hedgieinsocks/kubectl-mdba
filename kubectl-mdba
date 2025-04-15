@@ -604,7 +604,7 @@ mdba_recreate() {
   # step 4
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Preparing to receive the backup stream from primary '${primary}'"
-    exec_pod "${replica}" nohup bash -o pipefail -c "mkdir --parents ${KMDBA_BACKUP_DIR} && socat -u TCP-LISTEN:${KMDBA_STREAM_PORT},reuseaddr stdio | mbstream --parallel=${KMDBA_BACKUP_THREADS} --extract --directory=${KMDBA_BACKUP_DIR} &" \
+    exec_pod_it "${replica}" nohup bash -o pipefail -c "mkdir --parents ${KMDBA_BACKUP_DIR} && socat -u TCP-LISTEN:${KMDBA_STREAM_PORT},reuseaddr stdio | mbstream --parallel=${KMDBA_BACKUP_THREADS} --extract --directory=${KMDBA_BACKUP_DIR} &" \
       || err "failed to create the receiver pipeline"
   fi
   (( step_num +=1 ))

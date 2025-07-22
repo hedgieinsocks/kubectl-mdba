@@ -7,7 +7,7 @@
 set -eo pipefail
 
 VERSION="0.0.10-dev"
-OPERATOR_VERSION="0.38.0"
+OPERATOR_VERSION="0.38.1"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
 KMDBA_NAMESPACE="${KMDBA_NAMESPACE:-default}"
@@ -127,8 +127,28 @@ err() {
 
   message="$1"; shift
 
-  echo "$(highlight "${RED}" "🮲 error:") ${message}" >&2
+  echo "$(highlight "${RED}" "error:") ${message}" >&2
   exit 1
+}
+
+### show warning message
+# arg: $1 - message
+wrn() {
+  local message
+
+  message="$1"; shift
+
+  echo "$(highlight "${YLW}" "warning:") ${message}" >&2
+}
+
+### show info message
+# arg: $1 - message
+inf() {
+  local message
+
+  message="$1"; shift
+
+  echo "$(highlight "${CYA}" "info:") ${message}" >&2
 }
 
 ### show a message that denotes the start of a step in a multi-stage task
@@ -160,7 +180,7 @@ confirm() {
 
   message="$1"; shift
 
-  echo -n "$(highlight "${BLU}" "⦿ confirm:") type 'yes' to ${message}: "
+  echo -n "$(highlight "${BLU}" "confirm:") type 'yes' to ${message}: "
   read -r confirm
   [[ "${confirm}" == "yes" ]] || err "confirmation failed"
 }
@@ -238,7 +258,7 @@ parse_input() {
 
 ### get pod json object and set crucial pod vars
 # arg: $1 - pod
-# set: POD, POD_IP
+# set: POD, POD_IP, POD_ROLE
 get_pod() {
   local pod
 
@@ -251,6 +271,7 @@ get_pod() {
     || err "pod '${pod}' in '${KMDBA_NAMESPACE}' namespace is not a mariadb pod"
 
   POD_IP=$(jq --raw-output '.status.podIP' <<< "${POD}")
+  POD_ROLE=$(jq --raw-output '.metadata.labels.["k8s.mariadb.com/role"]' <<< "${POD}")
 }
 
 ### get mariadb json object and set crucial mariadb vars
@@ -449,6 +470,7 @@ mdba_enter() {
   pod="${KMDBA_TARGET}"
 
   get_pod "${pod}"
+  [[ "${POD_ROLE}" == "replica" ]] && wrn "pod '${pod}' in '${KMDBA_NAMESPACE}' namespace is a replica"
   exec_pod_it "${pod}" "bash"
 }
 
@@ -460,6 +482,7 @@ mdba_sql() {
   pod="${KMDBA_TARGET}"
 
   get_pod "${pod}"
+  [[ "${POD_ROLE}" == "replica" ]] && wrn "pod '${pod}' in '${KMDBA_NAMESPACE}' namespace is a replica"
   exec_pod_it "${pod}" bash -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD}"
 }
 
@@ -567,7 +590,7 @@ mdba_recreate() {
   confirm "recreate replica pod '${replica}' in '${KMDBA_NAMESPACE}' namespace from primary pod '${primary}'"
 
   log_file=$(mktemp)
-  echo "$(highlight "${CYA}" "⦿ log:") ${log_file}"
+  echo "$(highlight "${CYA}" "log:") ${log_file}"
 
   {
 
@@ -694,7 +717,7 @@ mdba_recreate() {
 
   } 2>&1 | tee "${log_file}"
 
-  echo "$(highlight "${CYA}" "⦿ log:") ${log_file}"
+  echo "$(highlight "${CYA}" "log:") ${log_file}"
 }
 
 main() {

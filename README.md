@@ -8,7 +8,7 @@
 
 * This project is not affiliated with MariaDB Foundation or MariaDB Operator in any way.
 * It has not been verified by MariaDB Operator, and no representations are made regarding the quality of the upstream software.
-* Written for mariadb-operator `>=v0.38.0`
+* Intended for mariadb-operator `v25.8.2`
 
 ## Dependencies
 

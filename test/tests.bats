@@ -45,12 +45,6 @@ setup() {
   [[ "${output}" =~ "KMDBA_GTID is not set" ]]
 }
 
-@test "check_globals: should fail with 'KMDBA_STREAM_PORT is not allowed integer' error" {
-  KMDBA_STREAM_PORT=99999
-  run -1 check_globals
-  [[ "${output}" =~ "KMDBA_STREAM_PORT is not allowed integer" ]]
-}
-
 @test "check_globals: should fail with 'KMDBA_BACKUP_DIR is not within' error" {
   KMDBA_BACKUP_DIR="/tmp/backup"
   run -1 check_globals
@@ -128,24 +122,6 @@ setup() {
 
 @test "parse_input: --namespace should fail with 'requires an argument' error" {
   run -1 parse_input ls --namespace
-  [[ "${output}" =~ "requires an argument" ]]
-}
-
-@test "parse_input: -p should succeed" {
-  run -0 parse_input recreate mary-ok-1 -p 5555
-}
-
-@test "parse_input: --port should succeed" {
-  run -0 parse_input recreate mary-ok-1 --port 5555
-}
-
-@test "parse_input: -p should fail with 'requires an argument' error" {
-  run -1 parse_input recreate mary-ok-1 -p
-  [[ "${output}" =~ "requires an argument" ]]
-}
-
-@test "parse_input: --port should fail with 'requires an argument' error" {
-  run -1 parse_input recreate mary-ok-1 --port
   [[ "${output}" =~ "requires an argument" ]]
 }
 

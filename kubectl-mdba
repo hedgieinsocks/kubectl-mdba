@@ -16,7 +16,6 @@ KMDBA_BACKUP_DIR="${KMDBA_BACKUP_DIR:-/var/lib/mysql/.kmdba_backup}"
 KMDBA_RESTORE_DIR="${KMDBA_RESTORE_DIR:-/var/lib/mysql/.kmdba_restore}"
 
 KMDBA_IGNORE_PRIMARY_MISMATCH="${KMDBA_IGNORE_PRIMARY_MISMATCH:-0}"
-KMDBA_STREAM_PORT="${KMDBA_STREAM_PORT:-4444}"
 KMDBA_BACKUP_THREADS="${KMDBA_BACKUP_THREADS:-1}"
 KMDBA_RECREATE_STEP="${KMDBA_RECREATE_STEP:-1}"
 
@@ -52,7 +51,6 @@ Flags:
 
 Recreate Flags:
   -f, --force               ignore primary index mismatch
-  -p, --port <num>          port for backup stream (default: ${KMDBA_STREAM_PORT})
   -t, --threads <num>       parallel threads {1..8} for datafiles transfer (default: ${KMDBA_BACKUP_THREADS})
   -s, --step <num>          step {1..14} to start from (default: ${KMDBA_RECREATE_STEP})
 EOF
@@ -77,11 +75,6 @@ check_globals() {
   if [[ "${KMDBA_RECREATE_STEP}" -ge 8 ]] && [[ "${KMDBA_RECREATE_STEP}" -le 12 ]]; then
     [[ -n "${KMDBA_GTID}" ]] || err "KMDBA_GTID is not set, but it is required because of KMDBA_RECREATE_STEP=${KMDBA_RECREATE_STEP}"
   fi
-
-  [[ "${KMDBA_STREAM_PORT}" =~ ^[0-9]+$ \
-    && "${KMDBA_STREAM_PORT}" -ne 3306 \
-    && "${KMDBA_STREAM_PORT}" -gt 1024 \
-    && "${KMDBA_STREAM_PORT}" -le 65535 ]] || err "KMDBA_STREAM_PORT is not allowed integer {1024..65535}: ${KMDBA_STREAM_PORT}"
 
   [[ "${KMDBA_BACKUP_DIR}" =~ ^/var/lib/mysql/.* ]] || err "KMDBA_BACKUP_DIR is not within /var/lib/mysql/: ${KMDBA_BACKUP_DIR}"
   [[ "${KMDBA_RESTORE_DIR}" =~ ^/var/lib/mysql/.* ]] || err "KMDBA_RESTORE_DIR is not within /var/lib/mysql/: ${KMDBA_RESTORE_DIR}"
@@ -188,7 +181,7 @@ confirm() {
 ### parse and validate the input
 # arg: $@ - arguments
 # set: KMDBA_CMD, KMDBA_TARGET, KMDBA_NAMESPACE, KMDBA_IGNORE_PRIMARY_MISMATCH,
-#      KMDBA_STREAM_PORT, KMDBA_BACKUP_THREADS, KMDBA_RECREATE_STEP
+#      KMDBA_BACKUP_THREADS, KMDBA_RECREATE_STEP
 parse_input() {
   while (( "$#" )); do
     case "$1" in
@@ -201,13 +194,6 @@ parse_input() {
         ;;
       -f|--force)
         KMDBA_IGNORE_PRIMARY_MISMATCH=1; shift
-        ;;
-      -p|--port)
-        if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
-          KMDBA_STREAM_PORT="$2"; shift 2
-        else
-          err "option $1 requires an argument"
-        fi
         ;;
       -t|--threads)
         if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
@@ -569,7 +555,7 @@ mdba_prom() {
 #### recreate <replica> - recreate replica from primary
 # arg: none
 mdba_recreate() {
-  local replica mariadb replica_ip primary log_file
+  local replica mariadb primary primary_ip log_file
   local -i step_num=1
 
   replica="${KMDBA_TARGET}"
@@ -582,10 +568,10 @@ mdba_recreate() {
   is_replica "${replica}"
   is_primary_index_mismatched
 
-  replica_ip="${POD_IP}"
   primary="${mariadb}-${MARIADB_CURRENT_PRIMARY_INDEX}"
-
   get_pod "${primary}"
+
+  primary_ip="${POD_IP}"
 
   confirm "recreate replica pod '${replica}' in '${KMDBA_NAMESPACE}' namespace from primary pod '${primary}'"
 
@@ -596,13 +582,9 @@ mdba_recreate() {
 
   # step 1
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
-    step "${step_num}" "replica" "${replica}" "Looking for leftovers from previous attempts"
+    step "${step_num}" "replica" "${replica}" "Looking for leftovers from the previous attempt"
     exec_pod "${replica}" bash -c "test ! -e ${KMDBA_BACKUP_DIR}" \
       || err "please remove '${KMDBA_BACKUP_DIR}' directory in the pod"
-    exec_pod "${replica}" bash -c "test ! -e ${KMDBA_RESTORE_DIR}" \
-      || err "please remove '${KMDBA_RESTORE_DIR}' directory in the pod"
-    exec_pod "${replica}" bash -c "test ! \$(pgrep socat)" \
-      || err "please kill 'socat' process running in the pod"
   fi
   (( step_num +=1 ))
 
@@ -617,6 +599,14 @@ mdba_recreate() {
 
   # step 3
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
+    step "${step_num}" "replica" "${replica}" "Disabling replication"
+    run_sql_query "${replica}" "STOP SLAVE;" \
+      || err "failed to disable replication"
+  fi
+  (( step_num +=1 ))
+
+  # step 4
+  if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Dropping databases to free up disk space"
     exec_pod "${replica}" bash -o pipefail -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --batch --skip-column-names --execute='SHOW DATABASES WHERE Database NOT IN (\"information_schema\", \"performance_schema\", \"mysql\", \"sys\");' \
       | xargs --no-run-if-empty --replace mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --execute='DROP DATABASE \`{}\`;'" \
@@ -624,26 +614,18 @@ mdba_recreate() {
   fi
   (( step_num +=1 ))
 
-  # step 4
-  if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
-    step "${step_num}" "replica" "${replica}" "Preparing to receive the backup stream from primary '${primary}'"
-    exec_pod_it "${replica}" nohup bash -o pipefail -c "mkdir --parents ${KMDBA_BACKUP_DIR} && socat -u TCP-LISTEN:${KMDBA_STREAM_PORT},reuseaddr stdio | mbstream --parallel=${KMDBA_BACKUP_THREADS} --extract --directory=${KMDBA_BACKUP_DIR} &" \
-      || err "failed to create the receiver pipeline"
-  fi
-  (( step_num +=1 ))
-
   # step 5
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
-    step "${step_num}" "primary" "${primary}" "Starting the backup stream to replica '${replica}:${KMDBA_STREAM_PORT}:${KMDBA_BACKUP_DIR}'"
-    exec_pod "${primary}" nohup bash -o pipefail -c "mariadb-backup --parallel=${KMDBA_BACKUP_THREADS} --skip-ssl --backup --user=root --password=\${MARIADB_ROOT_PASSWORD} --stream=xbstream | socat -u stdio TCP:${replica_ip}:${KMDBA_STREAM_PORT}" \
-      || err "backup stream has failed"
+    step "${step_num}" "replica" "${replica}" "Creating the backup in '${KMDBA_BACKUP_DIR}'"
+    exec_pod "${replica}" bash -o pipefail -c "mariadb-backup --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --host=${primary_ip} --backup --target-dir=${KMDBA_BACKUP_DIR} --parallel=${KMDBA_BACKUP_THREADS}" \
+      || err "failed to create the backup"
   fi
   (( step_num +=1 ))
 
   # step 6
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Preparing the backup in '${KMDBA_BACKUP_DIR}'"
-    exec_pod "${replica}" bash -c "mariadb-backup --skip-ssl --target-dir=${KMDBA_BACKUP_DIR} --prepare" \
+    exec_pod "${replica}" bash -c "mariadb-backup --skip-ssl --prepare --target-dir=${KMDBA_BACKUP_DIR}" \
       || err "failed to prepare the backup"
   fi
   (( step_num +=1 ))
@@ -660,7 +642,7 @@ mdba_recreate() {
   # step 8
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Restoring the backup to '${KMDBA_RESTORE_DIR}'"
-    exec_pod "${replica}" bash -c "mariadb-backup --skip-ssl --target-dir=${KMDBA_BACKUP_DIR} --datadir=${KMDBA_RESTORE_DIR} --move-back" \
+    exec_pod "${replica}" bash -c "mariadb-backup --skip-ssl --move-back --target-dir=${KMDBA_BACKUP_DIR} --datadir=${KMDBA_RESTORE_DIR}" \
       || err "failed to restore the backup"
   fi
   (( step_num +=1 ))

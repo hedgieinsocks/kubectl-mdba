@@ -46,6 +46,7 @@ You can `export` the following variables to tweak the plugin's behaviour.
 | `KMDBA_RECREATE_STEP`           | `1`                            | initial step number from `1` to `14` for replica recreation                |
 | `KMDBA_BACKUP_THREADS`          | `1`                            | number of threads from `1` to `8` to use for parallel datafiles transfer   |
 | `KMDBA_STREAM_PORT`             | `4444`                         | default port from `1024` to `65535` for backup stream                      |
+| `KMDBA_SKIP_CONFIRMATION`       | `0`                            | skip confirmation                  |
 | `KMDBA_IGNORE_PRIMARY_MISMATCH` | `0`                            | ignore mismatched desired and current primary pod indexes                  |
 | `KMDBA_BACKUP_DIR`              | `/var/lib/mysql/.kmdba_backup`  | tmp directory in `/var/lib/mysql/` to accept backup stream                 |
 | `KMDBA_RESTORE_DIR`             | `/var/lib/mysql/.kmdba_restore` | tmp directory in `/var/lib/mysql/` for restored backup                     |
@@ -69,6 +70,7 @@ Commands:
   du <pod>                  calculate database disk usage
   top [<pod>]               display cpu and ram usage
   repl <replica>            check replication status
+  skip <replica>            skip erroneous transactions
   prom <replica>            promote replica to primary
   recreate <replica>        recreate replica from primary
 
@@ -76,6 +78,7 @@ Flags:
   -h, --help                show this message
   -v, --version             show plugin version
   -n, --namespace <ns>      set namespace scope
+  -y, --yes                 skip confirmation
 
 Recreate Flags:
   -f, --force               ignore primary index mismatch

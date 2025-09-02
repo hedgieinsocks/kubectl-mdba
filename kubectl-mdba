@@ -16,6 +16,7 @@ KMDBA_BACKUP_DIR="${KMDBA_BACKUP_DIR:-/var/lib/mysql/.kmdba_backup}"
 KMDBA_RESTORE_DIR="${KMDBA_RESTORE_DIR:-/var/lib/mysql/.kmdba_restore}"
 
 KMDBA_IGNORE_PRIMARY_MISMATCH="${KMDBA_IGNORE_PRIMARY_MISMATCH:-0}"
+KMDBA_SKIP_CONFIRMATION="${KMDBA_SKIP_CONFIRMATION:-0}"
 KMDBA_STREAM_PORT="${KMDBA_STREAM_PORT:-4444}"
 KMDBA_BACKUP_THREADS="${KMDBA_BACKUP_THREADS:-1}"
 KMDBA_RECREATE_STEP="${KMDBA_RECREATE_STEP:-1}"
@@ -49,6 +50,7 @@ Flags:
   -h, --help                show this message
   -v, --version             show plugin version
   -n, --namespace <ns>      set namespace scope
+  -y, --yes                 skip confirmation
 
 Recreate Flags:
   -f, --force               ignore primary index mismatch
@@ -72,6 +74,7 @@ show_version() {
 check_globals() {
   [[ "${KMDBA_BACKUP_THREADS}" =~ ^[1-8]$ ]] || err "KMDBA_BACKUP_THREADS is not allowed integer {1..8}: ${KMDBA_BACKUP_THREADS}"
   [[ "${KMDBA_IGNORE_PRIMARY_MISMATCH}" =~ ^(0|1)$ ]] || err "KMDBA_IGNORE_PRIMARY_MISMATCH is not allowed integer {0..1}: ${KMDBA_IGNORE_PRIMARY_MISMATCH}"
+  [[ "${KMDBA_SKIP_CONFIRMATION}" =~ ^(0|1)$ ]] || err "KMDBA_SKIP_CONFIRMATION is not allowed integer {0..1}: ${KMDBA_SKIP_CONFIRMATION}"
   [[ "${KMDBA_RECREATE_STEP}" =~ ^([1-9]|1[0-4])$ ]] || err "KMDBA_RECREATE_STEP is not allowed integer {1..14}: ${KMDBA_RECREATE_STEP}"
 
   if [[ "${KMDBA_RECREATE_STEP}" -ge 8 ]] && [[ "${KMDBA_RECREATE_STEP}" -le 12 ]]; then
@@ -180,6 +183,10 @@ confirm() {
 
   message="$1"; shift
 
+  if (( KMDBA_SKIP_CONFIRMATION )); then
+    return
+  fi
+
   echo -n "$(highlight "${BLU}" "confirm:") type 'yes' to ${message}: "
   read -r confirm
   [[ "${confirm}" == "yes" ]] || err "confirmation failed"
@@ -223,6 +230,9 @@ parse_input() {
           err "option $1 requires an argument"
         fi
         ;;
+      -y|--yes)
+        KMDBA_SKIP_CONFIRMATION=1; shift
+        ;;
       -v|--version)
         show_version
         ;;
@@ -235,7 +245,7 @@ parse_input() {
       *)
         if [[ -z "${KMDBA_CMD}" ]]; then
           case "$1" in
-            ls|status|suspend|unsuspend|enter|sql|proc|du|top|repl|prom|recreate)
+            ls|status|suspend|unsuspend|enter|sql|proc|du|top|repl|skip|prom|recreate)
               KMDBA_CMD="$1"; shift
               ;;
             *)
@@ -533,11 +543,39 @@ mdba_repl() {
   is_replica "${replica}"
 
   run_sql_query "${replica}" 'SHOW VARIABLES LIKE "rpl_semi_sync_slave_enabled";' \
-    | grep --quiet ON || err "semi-sync replication is disabled on this pod"
+    | grep --quiet ON || wrn "semi-sync replication is disabled on pod '${replica}' in '${KMDBA_NAMESPACE}' namespace"
   run_sql_query "${replica}" 'SHOW SLAVE STATUS\G' \
-    | awk '/Master_Host|Seconds_Behind_Master|Slave_IO|Slave_SQL|Last_IO_Error|Last_SQL_Error/ {$1=$1; print}' \
+    | awk '/(Master_Host|Seconds_Behind_Master|Slave_IO_(State|Running)|Slave_SQL_Running(_State)?|Last_IO_Error|Last_SQL_Error|(Master|Relay)_Log_File|(Read_Master|Relay)_Log_Pos):/ {$1=$1; print}' \
     | sort \
     | colorize "yaml"
+}
+
+#### skip <replica> - skip erroneous transactions
+# arg: none
+mdba_skip() {
+  local replica mariadb replica_status
+
+  replica="${KMDBA_TARGET}"
+  mariadb="${KMDBA_TARGET%-[0-9]}"
+
+  get_pod "${replica}"
+  get_mariadb "${mariadb}"
+
+  assert_replication_enabled
+  is_replica "${replica}"
+
+  while true; do
+    replica_status=$(run_sql_query "${replica}" 'SHOW SLAVE STATUS\G' \
+      | awk '/(Slave_SQL_Running|Slave_SQL_Running_State|Last_SQL_Error|Relay_Log_Pos):/ {$1=$1; print}')
+    echo "${replica_status}" | colorize "yaml"
+    if grep --quiet "Slave_SQL_Running: Yes" <<< "${replica_status}"; then
+      exit
+    fi
+    confirm "skip this query"
+    run_sql_query "${replica}" "SET GLOBAL sql_slave_skip_counter = 1; START SLAVE;"
+    sleep 1
+    echo "---"
+  done
 }
 
 #### prom <replica> - promote replica to primary
@@ -736,6 +774,7 @@ main() {
     du)        mdba_du        ;;
     top)       mdba_top       ;;
     repl)      mdba_repl      ;;
+    skip)      mdba_skip      ;;
     prom)      mdba_prom      ;;
     recreate)  mdba_recreate  ;;
   esac

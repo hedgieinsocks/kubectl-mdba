@@ -32,6 +32,12 @@ setup() {
   [[ "${output}" =~ "KMDBA_IGNORE_PRIMARY_MISMATCH is not allowed integer" ]]
 }
 
+@test "check_globals: should fail with 'KMDBA_SKIP_CONFIRMATION is not allowed integer' error" {
+  KMDBA_SKIP_CONFIRMATION=3
+  run -1 check_globals
+  [[ "${output}" =~ "KMDBA_SKIP_CONFIRMATION is not allowed integer" ]]
+}
+
 @test "check_globals: should fail with 'KMDBA_RECREATE_STEP is not allowed integer' error" {
   KMDBA_RECREATE_STEP=20
   run -1 check_globals
@@ -129,6 +135,14 @@ setup() {
 @test "parse_input: --namespace should fail with 'requires an argument' error" {
   run -1 parse_input ls --namespace
   [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "parse_input: -y should succeed" {
+  run -0 parse_input -y
+}
+
+@test "parse_input: --yes should succeed" {
+  run -0 parse_input --yes
 }
 
 @test "parse_input: -p should succeed" {
@@ -533,6 +547,24 @@ setup() {
 @test "mdba_repl: should fail with 'replication is disabled' error" {
   KMDBA_TARGET="mary-norepl-0"
   run -1 mdba_repl
+  [[ "${output}" =~ "replication is disabled" ]]
+}
+
+@test "mdba_skip: should succeed and print replication info" {
+  KMDBA_TARGET="mary-ok-1"
+  run -0 mdba_skip
+  [[ "${output}" =~ "Last_SQL_Error" ]]
+}
+
+@test "mdba_skip: should fail with 'not a replica' error" {
+  KMDBA_TARGET="mary-ok-0"
+  run -1 mdba_repl
+  [[ "${output}" =~ "not a replica" ]]
+}
+
+@test "mdba_skip: should fail with 'replication is disabled' error" {
+  KMDBA_TARGET="mary-norepl-0"
+  run -1 mdba_skip
   [[ "${output}" =~ "replication is disabled" ]]
 }
 

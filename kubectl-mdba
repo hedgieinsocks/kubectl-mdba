@@ -10,6 +10,7 @@ VERSION="0.0.12-dev"
 OPERATOR_VERSION="25.8.2"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
+KMDBA_KUBECONFIG="${KMDBA_KUBECONFIG:-${KUBECONFIG}}"
 KMDBA_NAMESPACE="${KMDBA_NAMESPACE:-default}"
 
 KMDBA_BACKUP_DIR="${KMDBA_BACKUP_DIR:-/var/lib/mysql/.kmdba_backup}"
@@ -49,6 +50,8 @@ $(awk '/^####/ {$1=""; print}' "$0" \
 Flags:
   -h, --help                show this message
   -v, --version             show plugin version
+  -b, --kubectl <bin>       set kubectl binary
+  -k, --kubeconfig <file>   set kubeconfig path
   -n, --namespace <ns>      set namespace scope
   -y, --yes                 skip confirmation
 
@@ -194,11 +197,26 @@ confirm() {
 
 ### parse and validate the input
 # arg: $@ - arguments
-# set: KMDBA_CMD, KMDBA_TARGET, KMDBA_NAMESPACE, KMDBA_IGNORE_PRIMARY_MISMATCH,
-#      KMDBA_STREAM_PORT, KMDBA_BACKUP_THREADS, KMDBA_RECREATE_STEP
+# set: KMDBA_KUBECTL, KMDBA_KUBECONFIG, KMDBA_NAMESPACE, KMDBA_IGNORE_PRIMARY_MISMATCH,
+#      KMDBA_STREAM_PORT, KMDBA_BACKUP_THREADS, KMDBA_RECREATE_STEP, KMDBA_SKIP_CONFIRMATION,
+#      KMDBA_CMD, KMDBA_TARGET
 parse_input() {
   while (( "$#" )); do
     case "$1" in
+      -b|--kubectl)
+        if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
+          KMDBA_KUBECTL="$2"; shift 2
+        else
+          err "option $1 requires an argument"
+        fi
+        ;;
+      -k|--kubeconfig)
+        if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
+          KMDBA_KUBECONFIG="$2"; shift 2
+        else
+          err "option $1 requires an argument"
+        fi
+        ;;
       -n|--namespace)
         if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
           KMDBA_NAMESPACE="$2"; shift 2
@@ -274,7 +292,7 @@ get_pod() {
 
   pod="$1"; shift
 
-  POD=$("${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" get pod "${pod}" --ignore-not-found --output json)
+  POD=$("${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" get pod "${pod}" --ignore-not-found --output json)
   [[ -n "${POD}" ]] || err "pod '${pod}' not found in '${KMDBA_NAMESPACE}' namespace"
 
   jq --exit-status '.metadata.labels["app.kubernetes.io/name"] == "mariadb"' <<< "${POD}" >/dev/null \
@@ -292,7 +310,7 @@ get_mariadb() {
 
   mariadb="$1"; shift
 
-  MARIADB=$("${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" get mariadb "${mariadb}" --ignore-not-found --output json)
+  MARIADB=$("${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" get mariadb "${mariadb}" --ignore-not-found --output json)
   [[ -n "${MARIADB}" ]] || err "mariadb '${mariadb}' not found in '${KMDBA_NAMESPACE}' namespace"
 
   MARIADB_REPLICATION=$(jq --raw-output '.spec.replication.enabled' <<< "${MARIADB}")
@@ -356,7 +374,7 @@ exec_pod() {
   pod="$1"; shift
   command=("$@"); shift "$#"
 
-  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" exec "${pod}" --container mariadb -- "${command[@]}"
+  "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" exec "${pod}" --container mariadb -- "${command[@]}"
 }
 
 ### run an interactive shell command in a mariadb pod
@@ -368,7 +386,7 @@ exec_pod_it() {
   pod="$1"; shift
   command=("$@"); shift "$#"
 
-  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" exec "${pod}" --stdin --tty --container mariadb -- "${command[@]}"
+  "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" exec "${pod}" --stdin --tty --container mariadb -- "${command[@]}"
 }
 
 ### run a sql query in a mariadb pod
@@ -390,7 +408,7 @@ suspend_mariadb() {
 
   mariadb="$1"; shift
 
-  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" patch mariadb "${mariadb}" --type json \
+  "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" patch mariadb "${mariadb}" --type json \
     --patch='[{"op": "replace", "path": "/spec/suspend", "value": true}]' \
       || err "failed to suspend mariadb '${mariadb}' in '${KMDBA_NAMESPACE}' namespace"
 }
@@ -402,7 +420,7 @@ unsuspend_mariadb() {
 
   mariadb="$1"; shift
 
-  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" patch mariadb "${mariadb}" --type json \
+  "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" patch mariadb "${mariadb}" --type json \
     --patch='[{"op": "replace", "path": "/spec/suspend", "value": false}]' \
       || err "failed to unsuspend mariadb '${mariadb}' in '${KMDBA_NAMESPACE}' namespace"
 }
@@ -414,11 +432,11 @@ unsuspend_mariadb() {
 #### ls [<mariadb>] - list mariadbs with their pods
 # arg: none
 mdba_ls() {
-  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" get mariadbs --ignore-not-found \
+  "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" get mariadbs --ignore-not-found \
     | awk "NR == 1 || \$1 ~ /${KMDBA_TARGET:-.}/" \
     | colorize "VimHelp"
   echo
-  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" get pods --selector app.kubernetes.io/name=mariadb --ignore-not-found --output wide \
+  "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" get pods --selector app.kubernetes.io/name=mariadb --ignore-not-found --output wide \
     | awk "NR == 1 || \$1 ~ /${KMDBA_TARGET:-.}/" \
     | colorize "VimHelp"
 }
@@ -521,7 +539,7 @@ mdba_du() {
 #### top [<pod>] - display cpu and ram usage
 # arg: none
 mdba_top() {
-  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" top pods --selector app.kubernetes.io/name=mariadb --containers \
+  "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" top pods --selector app.kubernetes.io/name=mariadb --containers \
     | sed 's/(cores)\|(bytes)//g' \
     | column -t \
     | awk "NR == 1 || \$1 ~ /${KMDBA_TARGET:-.}/" \
@@ -596,10 +614,10 @@ mdba_prom() {
 
   confirm "promote replica pod '${replica}' in '${KMDBA_NAMESPACE}' namespace to primary"
 
-  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" patch mariadb "${mariadb}" --type json \
+  "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" patch mariadb "${mariadb}" --type json \
     --patch='[{"op": "replace", "path": "/spec/replication/primary/podIndex", "value": '"${replica_index}"'}]'
 
-  "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" wait mariadb "${mariadb}" --timeout=1m \
+  "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" wait mariadb "${mariadb}" --timeout=1m \
     --for jsonpath='{.status.currentPrimary}'="${replica}" \
       || err "pod ${replica} from mariadb '${mariadb}' in '${KMDBA_NAMESPACE}' namespace is not primary yet"
 }
@@ -722,9 +740,9 @@ mdba_recreate() {
   # step 11
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Recreating the pod"
-    "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" delete pod "${replica}" \
+    "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" delete pod "${replica}" \
       || err "failed to delete the pod"
-    "${KMDBA_KUBECTL}" --namespace "${KMDBA_NAMESPACE}" wait --for condition=ready pod "${replica}" --timeout=3m \
+    "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" wait --for condition=ready pod "${replica}" --timeout=3m \
       || err "the new pod failed to become ready"
   fi
   (( step_num +=1 ))

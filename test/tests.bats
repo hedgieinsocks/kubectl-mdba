@@ -119,6 +119,42 @@ setup() {
   run -0 parse_input --version
 }
 
+@test "parse_input: -b should succeed" {
+  run -0 parse_input ls -b kubectl_v1.33
+}
+
+@test "parse_input: --kubectl should succeed" {
+  run -0 parse_input ls --kubectl kubectl_v1.33
+}
+
+@test "parse_input: -b should fail with 'requires an argument' error" {
+  run -1 parse_input ls -b
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "parse_input: --kubectl should fail with 'requires an argument' error" {
+  run -1 parse_input ls --kubectl
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "parse_input: -k should succeed" {
+  run -0 parse_input ls -k ./kube/configs/kind_test
+}
+
+@test "parse_input: --kubeconfig should succeed" {
+  run -0 parse_input ls --kubeconfig ./kube/configs/kind_test
+}
+
+@test "parse_input: -k should fail with 'requires an argument' error" {
+  run -1 parse_input ls -k
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "parse_input: --kubeconfig should fail with 'requires an argument' error" {
+  run -1 parse_input ls --kubeconfig
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
 @test "parse_input: -n should succeed" {
   run -0 parse_input ls -n database
 }

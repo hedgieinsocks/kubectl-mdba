@@ -39,17 +39,18 @@ Place `kubectl_complete-mdba` into the directory within your `$PATH` (e.g. `~/.l
 
 You can `export` the following variables to tweak the plugin's behaviour.
 
-| VARIABLE                        | DEFAULT                        | DETAILS                                                                    |
-|---------------------------------|--------------------------------|----------------------------------------------------------------------------|
-| `KMDBA_KUBECTL`                 | `kubectl`                      | kubectl binary name                                                        |
-| `KMDBA_NAMESPACE`               | `default`                      | default k8s namespace                                                      |
-| `KMDBA_RECREATE_STEP`           | `1`                            | initial step number from `1` to `14` for replica recreation                |
-| `KMDBA_BACKUP_THREADS`          | `1`                            | number of threads from `1` to `8` to use for parallel datafiles transfer   |
-| `KMDBA_STREAM_PORT`             | `4444`                         | default port from `1024` to `65535` for backup stream                      |
-| `KMDBA_SKIP_CONFIRMATION`       | `0`                            | skip confirmation                  |
-| `KMDBA_IGNORE_PRIMARY_MISMATCH` | `0`                            | ignore mismatched desired and current primary pod indexes                  |
-| `KMDBA_BACKUP_DIR`              | `/var/lib/mysql/.kmdba_backup`  | tmp directory in `/var/lib/mysql/` to accept backup stream                 |
-| `KMDBA_RESTORE_DIR`             | `/var/lib/mysql/.kmdba_restore` | tmp directory in `/var/lib/mysql/` for restored backup                     |
+| VARIABLE | DEFAULT | DETAILS |
+|----------|---------|---------|
+| `KMDBA_KUBECTL` | `kubectl` | kubectl binary name |
+| `KMDBA_KUBECONFIG` | `$KUBECONFIG` | default kubeconfig path |
+| `KMDBA_NAMESPACE`  | `default` | default k8s namespace |
+| `KMDBA_RECREATE_STEP` | `1` | initial step number from `1` to `14` for replica recreation |
+| `KMDBA_BACKUP_THREADS` | `1` | number of threads from `1` to `8` to use for parallel datafiles transfer |
+| `KMDBA_STREAM_PORT` | `4444` | default port from `1024` to `65535` for backup stream |
+| `KMDBA_SKIP_CONFIRMATION` | `0` | skip confirmation |
+| `KMDBA_IGNORE_PRIMARY_MISMATCH` | `0` | ignore mismatched desired and current primary pod indexes |
+| `KMDBA_BACKUP_DIR` | `/var/lib/mysql/.kmdba_backup` | tmp directory in `/var/lib/mysql/` to accept backup stream |
+| `KMDBA_RESTORE_DIR` | `/var/lib/mysql/.kmdba_restore` | tmp directory in `/var/lib/mysql/` for restored backup |
 
 ## Usage
 
@@ -77,6 +78,8 @@ Commands:
 Flags:
   -h, --help                show this message
   -v, --version             show plugin version
+  -b, --kubectl <bin>       set kubectl binary
+  -k, --kubeconfig <file>   set kubeconfig path
   -n, --namespace <ns>      set namespace scope
   -y, --yes                 skip confirmation
 

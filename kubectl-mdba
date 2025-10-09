@@ -584,7 +584,7 @@ mdba_skip() {
 
   while true; do
     replica_status=$(run_sql_query "${replica}" 'SHOW SLAVE STATUS\G' \
-      | awk '/(Slave_SQL_Running|Slave_SQL_Running_State|Last_SQL_Error|Relay_Log_Pos):/ {$1=$1; print}')
+      | awk '/(Slave_SQL_Running(_State)?|Last_SQL_Error|Relay_Log_(File|Pos)):/ {$1=$1; print}')
     echo "${replica_status}" | colorize "yaml"
     if grep --quiet "Slave_SQL_Running: Yes" <<< "${replica_status}"; then
       exit

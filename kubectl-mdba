@@ -6,7 +6,7 @@
 [[ -n "${DEBUG}" ]] && set -x
 set -eo pipefail
 
-VERSION="0.0.12-dev"
+VERSION="0.0.12"
 OPERATOR_VERSION="25.8.2"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"

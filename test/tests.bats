@@ -45,7 +45,7 @@ setup() {
 }
 
 @test "check_globals: should fail with 'KMDBA_GTID is not set' error" {
-  KMDBA_RECREATE_STEP=8
+  KMDBA_RECREATE_STEP=9
   run -1 check_globals
   echo "${output}"
   [[ "${output}" =~ "KMDBA_GTID is not set" ]]

@@ -6,7 +6,7 @@
 [[ -n "${DEBUG}" ]] && set -x
 set -eo pipefail
 
-VERSION="0.0.13-dev"
+VERSION="0.0.13"
 OPERATOR_VERSION="25.8.2"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
@@ -176,7 +176,7 @@ step() {
     cluster) role=$(highlight "${BLU}" "${role}") ;;
   esac
 
-  echo "[$(highlight "${MAG}" "${step}/14")] [$(date +%T)] [${role}] [${name}] ${message}"
+  echo "[$(highlight "${MAG}" "${step}/15")] [$(date +%T)] [${role}] [${name}] ${message}"
 }
 
 ### ask for confirmation to proceed

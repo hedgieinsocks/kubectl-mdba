@@ -461,9 +461,9 @@ mdba_status() {
 
   if hash yq 2>/dev/null; then
     yq_option=$(yq --version | grep --quiet "mikefarah" && echo "--prettyPrint" || echo "--yaml-output")
-    yq "${yq_option}" '.spec.replication.primary * .status' <<< "${MARIADB}" | colorize "yaml"
+    yq "${yq_option}" '. = {"replication": .spec.replication, "status": .status} | del(.replication.agent, .replication.initContainer, .replication.replica.replPasswordSecretKeyRef, .status.defaultVersion)' <<< "${MARIADB}" | colorize "yaml"
   else
-    jq --raw-output '.spec.replication.primary * .status' <<< "${MARIADB}"
+    jq --raw-output '. = {"replication": .spec.replication, "status": .status} | del(.replication.agent, .replication.initContainer, .replication.replica.replPasswordSecretKeyRef, .status.defaultVersion)' <<< "${MARIADB}"
   fi
 }
 

@@ -2,16 +2,17 @@
 
 # 🦭 kubectl-mdba
 
-`kubectl-mdba` (mariadb administrator) is a `kubectl` plugin that helps manage [mariadb-operator](https://github.com/mariadb-operator) semi-sync replication clusters
+`kubectl-mdba` (mariadb administrator) is a `kubectl` plugin that helps manage [mariadb-operator](https://github.com/mariadb-operator) async/semi-sync replication clusters
 
 ## Disclaimer
 
 * This project is not affiliated with MariaDB Foundation or MariaDB Operator in any way.
 * It has not been verified by MariaDB Operator, and no representations are made regarding the quality of the upstream software.
-* Intended for mariadb-operator `v25.8.2`
+* Intended for mariadb-operator `v25.10.4`
 
 ## Dependencies
 
+* `kubectl` - https://github.com/kubernetes/kubectl
 * `jq` - https://github.com/jqlang/jq
 
 Optionally, you can install the following tools to improve the output of some commands:

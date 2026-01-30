@@ -45,7 +45,7 @@ setup() {
 }
 
 @test "check_globals: should fail with 'KMDBA_GTID is not set' error" {
-  KMDBA_RECREATE_STEP=9
+  KMDBA_RECREATE_STEP=10
   run -1 check_globals
   echo "${output}"
   [[ "${output}" =~ "KMDBA_GTID is not set" ]]
@@ -96,7 +96,7 @@ setup() {
 
 @test "step: should succeed and print formatted message" {
   run -0 step 1 replica mary-ok-1 "hedgehogs are cute"
-  [[ "${output}" =~ 1/14.*replica.*mary-ok-1.*hedgehogs\ are\ cute ]]
+  [[ "${output}" =~ 1/16.*replica.*mary-ok-1.*hedgehogs\ are\ cute ]]
 }
 
 @test "parse_input: should succeed" {
@@ -232,6 +232,24 @@ setup() {
 
 @test "parse_input: --step should fail with 'requires an argument' error" {
   run -1 parse_input recreate mary-ok-1 --step
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "parse_input: -g should succeed" {
+  run -0 parse_input recreate mary-ok-1 -s 10 -g 0-1-11
+}
+
+@test "parse_input: --gtid should succeed" {
+  run -0 parse_input recreate mary-ok-1 --step 10 --gtid 0-1-11
+}
+
+@test "parse_input: -g should fail with 'requires an argument' error" {
+  run -1 parse_input recreate mary-ok-1 -g
+  [[ "${output}" =~ "requires an argument" ]]
+}
+
+@test "parse_input: --gtid should fail with 'requires an argument' error" {
+  run -1 parse_input recreate mary-ok-1 --gtid
   [[ "${output}" =~ "requires an argument" ]]
 }
 

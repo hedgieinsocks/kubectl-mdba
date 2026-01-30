@@ -7,7 +7,7 @@
 set -eo pipefail
 
 VERSION="0.0.14-dev"
-OPERATOR_VERSION="25.8.2"
+OPERATOR_VERSION="25.10.4"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
 KMDBA_KUBECONFIG="${KMDBA_KUBECONFIG:-${KUBECONFIG}}"
@@ -59,7 +59,8 @@ Recreate Flags:
   -f, --force               ignore primary index mismatch
   -p, --port <num>          port for backup stream (default: ${KMDBA_STREAM_PORT})
   -t, --threads <num>       parallel threads {1..8} for datafiles transfer (default: ${KMDBA_BACKUP_THREADS})
-  -s, --step <num>          step {1..14} to start from (default: ${KMDBA_RECREATE_STEP})
+  -s, --step <num>          step {1..16} to start from (default: ${KMDBA_RECREATE_STEP})
+  -g, --gtid <gtid>         set GTID when --step is between 10 and 14
 EOF
   exit 0
 }
@@ -78,10 +79,11 @@ check_globals() {
   [[ "${KMDBA_BACKUP_THREADS}" =~ ^[1-8]$ ]] || err "KMDBA_BACKUP_THREADS is not allowed integer {1..8}: ${KMDBA_BACKUP_THREADS}"
   [[ "${KMDBA_IGNORE_PRIMARY_MISMATCH}" =~ ^(0|1)$ ]] || err "KMDBA_IGNORE_PRIMARY_MISMATCH is not allowed integer {0..1}: ${KMDBA_IGNORE_PRIMARY_MISMATCH}"
   [[ "${KMDBA_SKIP_CONFIRMATION}" =~ ^(0|1)$ ]] || err "KMDBA_SKIP_CONFIRMATION is not allowed integer {0..1}: ${KMDBA_SKIP_CONFIRMATION}"
-  [[ "${KMDBA_RECREATE_STEP}" =~ ^([1-9]|1[0-5])$ ]] || err "KMDBA_RECREATE_STEP is not allowed integer {1..15}: ${KMDBA_RECREATE_STEP}"
+  [[ "${KMDBA_RECREATE_STEP}" =~ ^([1-9]|1[0-6])$ ]] || err "KMDBA_RECREATE_STEP is not allowed integer {1..16}: ${KMDBA_RECREATE_STEP}"
 
-  if [[ "${KMDBA_RECREATE_STEP}" -ge 9 ]] && [[ "${KMDBA_RECREATE_STEP}" -le 13 ]]; then
+  if [[ "${KMDBA_RECREATE_STEP}" -ge 10 ]] && [[ "${KMDBA_RECREATE_STEP}" -le 14 ]]; then
     [[ -n "${KMDBA_GTID}" ]] || err "KMDBA_GTID is not set, but it is required because of KMDBA_RECREATE_STEP=${KMDBA_RECREATE_STEP}"
+    [[ "${KMDBA_GTID}" =~ ^0-1[0-9]-[0-9]+$ ]] || err "KMDBA_GTID does not match regex '0-1[0-9]-[0-9]+': ${KMDBA_GTID}"
   fi
 
   [[ "${KMDBA_STREAM_PORT}" =~ ^[0-9]+$ \
@@ -176,7 +178,7 @@ step() {
     cluster) role=$(highlight "${BLU}" "${role}") ;;
   esac
 
-  echo "[$(highlight "${MAG}" "${step}/15")] [$(date +%T)] [${role}] [${name}] ${message}"
+  echo "[$(highlight "${MAG}" "${step}/16")] [$(date +%T)] [${role}] [${name}] ${message}"
 }
 
 ### ask for confirmation to proceed
@@ -244,6 +246,13 @@ parse_input() {
       -s|--step)
         if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
           KMDBA_RECREATE_STEP="$2"; shift 2
+        else
+          err "option $1 requires an argument"
+        fi
+        ;;
+      -g|--gtid)
+        if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
+          KMDBA_GTID="$2"; shift 2
         else
           err "option $1 requires an argument"
         fi
@@ -560,8 +569,6 @@ mdba_repl() {
   assert_replication_enabled
   is_replica "${replica}"
 
-  run_sql_query "${replica}" 'SHOW VARIABLES LIKE "rpl_semi_sync_slave_enabled";' \
-    | grep --quiet ON || wrn "semi-sync replication is disabled on pod '${replica}' in '${KMDBA_NAMESPACE}' namespace"
   run_sql_query "${replica}" 'SHOW SLAVE STATUS\G' \
     | awk '/(Master_Host|Seconds_Behind_Master|Slave_IO_(State|Running)|Slave_SQL_Running(_State)?|Last_IO_Error|Last_SQL_Error|(Master|Relay)_Log_File|(Read_Master|Relay)_Log_Pos):/ {$1=$1; print}' \
     | sort \
@@ -625,7 +632,7 @@ mdba_prom() {
 #### recreate <replica> - recreate replica from primary
 # arg: none
 mdba_recreate() {
-  local replica mariadb replica_ip primary log_file
+  local replica mariadb replica_ip primary context log_file
   local -i step_num=1
 
   replica="${KMDBA_TARGET}"
@@ -645,7 +652,8 @@ mdba_recreate() {
 
   confirm "recreate replica pod '${replica}' in '${KMDBA_NAMESPACE}' namespace from primary pod '${primary}'"
 
-  log_file=$(mktemp)
+  context=$("${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" config current-context)
+  log_file=$(mktemp -t "XXXXX.kmdba_recreate_${context}_${KMDBA_NAMESPACE}_${mariadb}.log")
   echo "$(highlight "${CYA}" "log:") ${log_file}"
 
   {
@@ -657,6 +665,8 @@ mdba_recreate() {
       || err "please remove '${KMDBA_BACKUP_DIR}' directory in the pod"
     exec_pod "${replica}" bash -c "test ! -e ${KMDBA_RESTORE_DIR}" \
       || err "please remove '${KMDBA_RESTORE_DIR}' directory in the pod"
+    exec_pod "${replica}" bash -c "test ! \$(pgrep --runstates=DIRS mbstream)" \
+      || err "please kill 'mbstream' process running in the pod"
     exec_pod "${replica}" bash -c "test ! \$(pgrep --runstates=DIRS socat)" \
       || err "please kill 'socat' process running in the pod"
   fi
@@ -665,8 +675,10 @@ mdba_recreate() {
   # step 2
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "primary" "${primary}" "Looking for leftovers from previous attempts"
-    exec_pod "${replica}" bash -c "test ! \$(pgrep --runstates=DIRS mariadb-backup)" \
+    exec_pod "${primary}" bash -c "test ! \$(pgrep --runstates=DIRS mariadb-backup)" \
       || err "please kill 'mariadb-backup' process running in the pod"
+    exec_pod "${primary}" bash -c "test ! \$(pgrep --runstates=DIRS socat)" \
+      || err "please kill 'socat' process running in the pod"
   fi
   (( step_num +=1 ))
 
@@ -681,6 +693,14 @@ mdba_recreate() {
 
   # step 4
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
+    step "${step_num}" "replica" "${replica}" "Stopping replication"
+    run_sql_query "${replica}" "STOP SLAVE;" \
+      || err "failed to stop replication"
+  fi
+  (( step_num +=1 ))
+
+  # step 5
+  if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Dropping databases to free up disk space"
     exec_pod "${replica}" bash -o pipefail -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --batch --skip-column-names --execute='SHOW DATABASES WHERE Database NOT IN (\"information_schema\", \"performance_schema\", \"mysql\", \"sys\");' \
       | xargs --no-run-if-empty --replace mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --execute='DROP DATABASE \`{}\`;'" \
@@ -688,23 +708,23 @@ mdba_recreate() {
   fi
   (( step_num +=1 ))
 
-  # step 5
+  # step 6
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Preparing to receive the backup stream from primary '${primary}'"
-    exec_pod_it "${replica}" nohup bash -o pipefail -c "mkdir --parents ${KMDBA_BACKUP_DIR} && socat -u TCP-LISTEN:${KMDBA_STREAM_PORT},reuseaddr stdio | mbstream --parallel=${KMDBA_BACKUP_THREADS} --extract --directory=${KMDBA_BACKUP_DIR} &" \
+    exec_pod "${replica}" bash -c "mkdir --parents ${KMDBA_BACKUP_DIR}; bash -o pipefail -c 'socat -u TCP-LISTEN:${KMDBA_STREAM_PORT},reuseaddr stdio | mbstream --parallel=${KMDBA_BACKUP_THREADS} --extract --directory=${KMDBA_BACKUP_DIR}' >/tmp/kmdba_recreate_step_5.log 2>&1 &" \
       || err "failed to create the receiver pipeline"
   fi
   (( step_num +=1 ))
 
-  # step 6
+  # step 7
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "primary" "${primary}" "Starting the backup stream to replica '${replica}:${KMDBA_STREAM_PORT}:${KMDBA_BACKUP_DIR}'"
-    exec_pod "${primary}" nohup bash -o pipefail -c "mariadb-backup --parallel=${KMDBA_BACKUP_THREADS} --skip-ssl --backup --user=root --password=\${MARIADB_ROOT_PASSWORD} --stream=xbstream | socat -u stdio TCP:${replica_ip}:${KMDBA_STREAM_PORT}" \
+    exec_pod "${primary}" bash -o pipefail -c "mariadb-backup --parallel=${KMDBA_BACKUP_THREADS} --skip-ssl --backup --user=root --password=\${MARIADB_ROOT_PASSWORD} --stream=xbstream | socat -u stdio TCP:${replica_ip}:${KMDBA_STREAM_PORT}" \
       || err "backup stream has failed"
   fi
   (( step_num +=1 ))
 
-  # step 7
+  # step 8
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Preparing the backup in '${KMDBA_BACKUP_DIR}'"
     exec_pod "${replica}" bash -c "mariadb-backup --skip-ssl --target-dir=${KMDBA_BACKUP_DIR} --prepare" \
@@ -712,16 +732,16 @@ mdba_recreate() {
   fi
   (( step_num +=1 ))
 
-  # step 8
+  # step 9
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
-    step "${step_num}" "replica" "${replica}" "Retrieving the last change GTID"
+    step "${step_num}" "replica" "${replica}" "Retrieving GTID"
     KMDBA_GTID=$(exec_pod "${replica}" bash -c "awk '{print \$NF}' ${KMDBA_BACKUP_DIR}/mariadb_backup_binlog_info") \
-      || err "failed to retrieve the last change GTID"
-    [[ -n "${KMDBA_GTID}" ]] || err "failed to retrieve the last change GTID"
+      || err "failed to retrieve GTID"
+    [[ -n "${KMDBA_GTID}" ]] || err "failed to retrieve GTID"
   fi
   (( step_num +=1 ))
 
-  # step 9
+  # step 10
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Restoring the backup to '${KMDBA_RESTORE_DIR}'"
     exec_pod "${replica}" bash -c "mariadb-backup --skip-ssl --target-dir=${KMDBA_BACKUP_DIR} --datadir=${KMDBA_RESTORE_DIR} --move-back" \
@@ -729,7 +749,7 @@ mdba_recreate() {
   fi
   (( step_num +=1 ))
 
-  # step 10
+  # step 11
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Moving the restored backup from '${KMDBA_RESTORE_DIR}' to '/var/lib/mysql'"
     exec_pod "${replica}" bash -c "rm --recursive --force /var/lib/mysql/*; mv ${KMDBA_RESTORE_DIR}/* /var/lib/mysql" \
@@ -737,7 +757,7 @@ mdba_recreate() {
   fi
   (( step_num +=1 ))
 
-  # step 11
+  # step 12
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Removing temporary directories '${KMDBA_BACKUP_DIR}' and '${KMDBA_RESTORE_DIR}'"
     exec_pod "${replica}" bash -c "rm --recursive --force ${KMDBA_BACKUP_DIR} ${KMDBA_RESTORE_DIR}" \
@@ -745,7 +765,7 @@ mdba_recreate() {
   fi
   (( step_num +=1 ))
 
-  # step 12
+  # step 13
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Recreating the pod"
     "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" delete pod "${replica}" \
@@ -755,15 +775,15 @@ mdba_recreate() {
   fi
   (( step_num +=1 ))
 
-  # step 13
+  # step 14
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
-    step "${step_num}" "replica" "${replica}" "Setting the last change GTID"
-    run_sql_query "${replica}" "RESET SLAVE ALL; SET GLOBAL gtid_slave_pos = \`${KMDBA_GTID}\`;" \
-      || err "failed to set the last change GTID"
+    step "${step_num}" "replica" "${replica}" "Setting GTID to '${KMDBA_GTID}'"
+    run_sql_query "${replica}" "RESET MASTER; RESET SLAVE ALL; SET GLOBAL gtid_slave_pos = \`${KMDBA_GTID}\`;" \
+      || err "failed to set GTID"
   fi
   (( step_num +=1 ))
 
-  # step 14
+  # step 15
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "cluster" "${mariadb}" "Resuming reconciliation by mariadb-operator"
     unsuspend_mariadb "${mariadb}"
@@ -773,7 +793,7 @@ mdba_recreate() {
   # allow mariadb-operator to reconcile replication
   sleep 15
 
-  # step 15
+  # step 16
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Checking replication status"
     mdba_repl
@@ -781,6 +801,7 @@ mdba_recreate() {
 
   } 2>&1 | tee "${log_file}"
 
+  echo "---"
   echo "$(highlight "${CYA}" "log:") ${log_file}"
 }
 

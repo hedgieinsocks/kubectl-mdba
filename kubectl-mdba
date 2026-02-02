@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # kubectl-mdba is a kubectl plugin that helps manage
-# mariadb-operator semi-sync replication clusters
+# mariadb-operator async/semi-sync replication clusters
 
 [[ -n "${DEBUG}" ]] && set -x
 set -eo pipefail
@@ -35,7 +35,7 @@ RES=$(tput sgr0)
 # arg: none
 show_help() {
   cat << EOF | colorize "man"
-kubectl mdba helps manage mariadb-operator semi-sync replication clusters
+kubectl mdba helps manage mariadb-operator async/semi-sync replication clusters
 
 Usage:
   kubectl mdba <command> [<target>]
@@ -328,14 +328,14 @@ get_mariadb() {
   MARIADB_DESIRED_PRIMARY_INDEX=$(jq --raw-output '.spec.replication.primary.podIndex' <<< "${MARIADB}")
 }
 
-### assert that semi-sync replication is enabled
+### assert that async/semi-sync replication is enabled
 # arg: none
 assert_replication_enabled() {
   local mariadb
 
   mariadb="${KMDBA_TARGET}"
 
-  [[ "${MARIADB_REPLICATION}" == "true" ]] || err "semi-sync replication is disabled for mariadb '${mariadb}' in '${KMDBA_NAMESPACE}' namespace"
+  [[ "${MARIADB_REPLICATION}" == "true" ]] || err "async/semi-sync replication is disabled for mariadb '${mariadb}' in '${KMDBA_NAMESPACE}' namespace"
 }
 
 ### check if mariadb is suspended
@@ -370,7 +370,7 @@ is_replica() {
   pod_index="${pod##*-}"
 
   if [[ "${pod_index}" -eq "${MARIADB_CURRENT_PRIMARY_INDEX}" ]]; then
-    err "pod '${pod}' in '${KMDBA_NAMESPACE}' namespace is not a replica"
+    err "pod '${pod}' in '${KMDBA_NAMESPACE}' namespace is not a replica, but the current primary"
   fi
 }
 

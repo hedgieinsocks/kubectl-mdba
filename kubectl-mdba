@@ -6,8 +6,8 @@
 [[ -n "${DEBUG}" ]] && set -x
 set -eo pipefail
 
-VERSION="0.0.15-dev"
-OPERATOR_VERSION="25.10.4"
+VERSION="0.0.15"
+OPERATOR_VERSION="26.3.0"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
 KMDBA_KUBECONFIG="${KMDBA_KUBECONFIG:-${KUBECONFIG}}"
@@ -58,7 +58,7 @@ Flags:
 Recreate Flags:
   -f, --force               ignore primary index mismatch
   -p, --port <num>          port for backup stream (default: ${KMDBA_STREAM_PORT})
-  -t, --threads <num>       parallel threads {1..8} for datafiles transfer (default: ${KMDBA_BACKUP_THREADS})
+  -t, --threads <num>       parallel threads {1..16} for datafiles transfer (default: ${KMDBA_BACKUP_THREADS})
   -s, --step <num>          step {1..16} to start from (default: ${KMDBA_RECREATE_STEP})
   -g, --gtid <gtid>         set GTID when --step is between 10 and 14
 EOF
@@ -76,7 +76,7 @@ show_version() {
 ### validate crucial global vars
 # arg: none
 check_globals() {
-  [[ "${KMDBA_BACKUP_THREADS}" =~ ^[1-8]$ ]] || err "KMDBA_BACKUP_THREADS is not allowed integer {1..8}: ${KMDBA_BACKUP_THREADS}"
+  [[ "${KMDBA_BACKUP_THREADS}" =~ ^([1-9]|1[0-6])$ ]] || err "KMDBA_BACKUP_THREADS is not allowed integer {1..16}: ${KMDBA_BACKUP_THREADS}"
   [[ "${KMDBA_IGNORE_PRIMARY_MISMATCH}" =~ ^(0|1)$ ]] || err "KMDBA_IGNORE_PRIMARY_MISMATCH is not allowed integer {0..1}: ${KMDBA_IGNORE_PRIMARY_MISMATCH}"
   [[ "${KMDBA_SKIP_CONFIRMATION}" =~ ^(0|1)$ ]] || err "KMDBA_SKIP_CONFIRMATION is not allowed integer {0..1}: ${KMDBA_SKIP_CONFIRMATION}"
   [[ "${KMDBA_RECREATE_STEP}" =~ ^([1-9]|1[0-6])$ ]] || err "KMDBA_RECREATE_STEP is not allowed integer {1..16}: ${KMDBA_RECREATE_STEP}"

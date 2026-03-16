@@ -21,7 +21,7 @@ setup() {
 }
 
 @test "check_globals: should fail with 'KMDBA_BACKUP_THREADS is not allowed integer' error" {
-  KMDBA_BACKUP_THREADS=10
+  KMDBA_BACKUP_THREADS=20
   run -1 check_globals
   [[ "${output}" =~ "KMDBA_BACKUP_THREADS is not allowed integer" ]]
 }

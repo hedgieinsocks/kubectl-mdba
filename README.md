@@ -8,7 +8,7 @@
 
 * This project is not affiliated with MariaDB Foundation or MariaDB Operator in any way.
 * It has not been verified by MariaDB Operator, and no representations are made regarding the quality of the upstream software.
-* Intended for mariadb-operator `v25.10.4`
+* Intended for mariadb-operator `v26.3.0`
 
 ## Dependencies
 
@@ -46,7 +46,7 @@ You can `export` the following variables to tweak the plugin's behaviour.
 | `KMDBA_KUBECONFIG` | `$KUBECONFIG` | default kubeconfig path |
 | `KMDBA_NAMESPACE`  | `default` | default k8s namespace |
 | `KMDBA_RECREATE_STEP` | `1` | initial step number from `1` to `14` for replica recreation |
-| `KMDBA_BACKUP_THREADS` | `1` | number of threads from `1` to `8` to use for parallel datafiles transfer |
+| `KMDBA_BACKUP_THREADS` | `1` | number of threads from `1` to `16` to use for parallel datafiles transfer |
 | `KMDBA_STREAM_PORT` | `4444` | default port from `1024` to `65535` for backup stream |
 | `KMDBA_SKIP_CONFIRMATION` | `0` | skip confirmation |
 | `KMDBA_IGNORE_PRIMARY_MISMATCH` | `0` | ignore mismatched desired and current primary pod indexes |
@@ -87,7 +87,7 @@ Flags:
 Recreate Flags:
   -f, --force               ignore primary index mismatch
   -p, --port <num>          port for backup stream (default: 4444)
-  -t, --threads <num>       parallel threads {1..8} for datafiles transfer (default: 1)
+  -t, --threads <num>       parallel threads {1..16} for datafiles transfer (default: 1)
   -s, --step <num>          step {1..14} to start from (default: 1)
 ```
 

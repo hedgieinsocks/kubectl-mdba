@@ -6,7 +6,7 @@
 [[ -n "${DEBUG}" ]] && set -x
 set -eo pipefail
 
-VERSION="0.0.15"
+VERSION="0.0.16"
 OPERATOR_VERSION="26.3.0"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
@@ -530,7 +530,7 @@ mdba_sql() {
   exec_pod_it "${pod}" bash -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD}"
 }
 
-#### du <pod> [<database>] - calculate database disk usage
+#### proc <pod> - print processlist
 # arg: none
 mdba_proc() {
   local pod
@@ -541,7 +541,7 @@ mdba_proc() {
   run_sql_query "${pod}" 'SHOW PROCESSLIST;'
 }
 
-#### du <pod> - calculate database disk usage
+#### du <pod> [<database>] - calculate database disk usage
 # arg: none
 mdba_du() {
   local pod

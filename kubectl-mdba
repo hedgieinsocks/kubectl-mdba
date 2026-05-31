@@ -6,7 +6,7 @@
 [[ -n "${DEBUG}" ]] && set -x
 set -eo pipefail
 
-VERSION="0.0.15"
+VERSION="0.0.16"
 OPERATOR_VERSION="26.3.0"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
@@ -253,6 +253,13 @@ parse_input() {
       -g|--gtid)
         if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
           KMDBA_GTID="$2"; shift 2
+        else
+          err "option $1 requires an argument"
+        fi
+        ;;
+      -db|--database)
+        if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
+          DATABASE="$2"; shift 2
         else
           err "option $1 requires an argument"
         fi
@@ -534,7 +541,7 @@ mdba_proc() {
   run_sql_query "${pod}" 'SHOW PROCESSLIST;'
 }
 
-#### du <pod> - calculate database disk usage
+#### du <pod> [<database>] - calculate database disk usage
 # arg: none
 mdba_du() {
   local pod
@@ -542,7 +549,11 @@ mdba_du() {
   pod="${KMDBA_TARGET}"
 
   get_pod "${pod}"
-  exec_pod "${pod}" bash -o pipefail -c "find /var/lib/mysql/ -maxdepth 1 -type d ! -name 'lost+found' -exec du --summarize --human-readable {} \; | sort --reverse --human-numeric-sort | awk --field-separator=/ '{print \$1, \$5}'"
+  if [[ -n "${DATABASE}" ]]; then
+    exec_pod "${pod}" bash -o pipefail -c "du --human-readable /var/lib/mysql/${DATABASE}/* 2>/dev/null | sort --reverse --human-numeric-sort || echo /var/lib/mysql/${DATABASE} - not found"
+  else
+    exec_pod "${pod}" bash -o pipefail -c "find /var/lib/mysql/ -maxdepth 1 -type d ! -name 'lost+found' -exec du --summarize --human-readable {} \; | sort --reverse --human-numeric-sort | awk --field-separator=/ '{print \$1, \$5}'"
+  fi
 }
 
 #### top [<pod>] - display cpu and ram usage

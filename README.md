@@ -69,7 +69,7 @@ Commands:
   enter <pod>               exec into pod
   sql <pod>                 launch mariadb shell
   proc <pod>                print processlist
-  du <pod>                  calculate database disk usage
+  du <pod> [-db <database>] calculate database disk usage
   top [<pod>]               display cpu and ram usage
   repl <replica>            check replication status
   skip <replica>            skip erroneous transactions
@@ -83,6 +83,7 @@ Flags:
   -k, --kubeconfig <file>   set kubeconfig path
   -n, --namespace <ns>      set namespace scope
   -y, --yes                 skip confirmation
+  -db, --database <db>      specify database for `du` subcommand
 
 Recreate Flags:
   -f, --force               ignore primary index mismatch

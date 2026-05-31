@@ -56,7 +56,7 @@ You can `export` the following variables to tweak the plugin's behaviour.
 ## Usage
 
 ```
-kubectl mdba helps manage mariadb-operator semi-sync replication clusters
+kubectl mdba helps manage mariadb-operator async/semi-sync replication clusters
 
 Usage:
   kubectl mdba <command> [<target>]
@@ -69,7 +69,7 @@ Commands:
   enter <pod>               exec into pod
   sql <pod>                 launch mariadb shell
   proc <pod>                print processlist
-  du <pod> [-db <database>] calculate database disk usage
+  du <pod> [-d <db>]        calculate database disk usage
   top [<pod>]               display cpu and ram usage
   repl <replica>            check replication status
   skip <replica>            skip erroneous transactions
@@ -83,13 +83,13 @@ Flags:
   -k, --kubeconfig <file>   set kubeconfig path
   -n, --namespace <ns>      set namespace scope
   -y, --yes                 skip confirmation
-  -db, --database <db>      specify database for `du` subcommand
 
 Recreate Flags:
   -f, --force               ignore primary index mismatch
   -p, --port <num>          port for backup stream (default: 4444)
   -t, --threads <num>       parallel threads {1..16} for datafiles transfer (default: 1)
-  -s, --step <num>          step {1..14} to start from (default: 1)
+  -s, --step <num>          step {1..16} to start from (default: 1)
+  -g, --gtid <gtid>         set GTID when --step is between 10 and 14
 ```
 
 ## Links

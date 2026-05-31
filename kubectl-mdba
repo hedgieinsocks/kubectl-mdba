@@ -6,7 +6,7 @@
 [[ -n "${DEBUG}" ]] && set -x
 set -eo pipefail
 
-VERSION="0.0.16"
+VERSION="0.0.16-dev"
 OPERATOR_VERSION="26.3.0"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
@@ -42,7 +42,7 @@ Usage:
 
 Commands:
 $(awk '/^####/ {$1=""; print}' "$0" \
-  | while IFS="-" read -r cmd description; do
+  | while IFS=":" read -r cmd description; do
       printf " %-26s%s\n" "${cmd}" "${description}"
     done
 )
@@ -257,7 +257,7 @@ parse_input() {
           err "option $1 requires an argument"
         fi
         ;;
-      -db|--database)
+      -d|--database)
         if [[ -n "$2" ]] && [[ "${2:0:1}" != "-" ]]; then
           DATABASE="$2"; shift 2
         else
@@ -445,7 +445,7 @@ unsuspend_mariadb() {
 #==========| SUBCOMMAND FUNCTIONS |==========#
 #============================================#
 
-#### ls [<mariadb>] - list mariadbs with their pods
+#### ls [<mariadb>]: list mariadbs with their pods
 # arg: none
 mdba_ls() {
   "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" get mariadbs --ignore-not-found \
@@ -457,7 +457,7 @@ mdba_ls() {
     | colorize "VimHelp"
 }
 
-#### status <mariadb> - check mariadb status
+#### status <mariadb>: check mariadb status
 # arg: none
 mdba_status() {
   local mariadb yq_option
@@ -474,7 +474,7 @@ mdba_status() {
   fi
 }
 
-#### suspend <mariadb> - pause mariadb reconciliation
+#### suspend <mariadb>: pause mariadb reconciliation
 # arg: none
 mdba_suspend() {
   local mariadb
@@ -490,7 +490,7 @@ mdba_suspend() {
   fi
 }
 
-#### unsuspend <mariadb> - resume mariadb reconciliation
+#### unsuspend <mariadb>: resume mariadb reconciliation
 # arg: none
 mdba_unsuspend() {
   local mariadb
@@ -506,7 +506,7 @@ mdba_unsuspend() {
   fi
 }
 
-#### enter <pod> - exec into pod
+#### enter <pod>: exec into pod
 # arg: none
 mdba_enter() {
   local pod
@@ -518,7 +518,7 @@ mdba_enter() {
   exec_pod_it "${pod}" "bash"
 }
 
-#### sql <pod> - launch mariadb shell
+#### sql <pod>: launch mariadb shell
 # arg: none
 mdba_sql() {
   local pod
@@ -530,7 +530,7 @@ mdba_sql() {
   exec_pod_it "${pod}" bash -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD}"
 }
 
-#### proc <pod> - print processlist
+#### proc <pod>: print processlist
 # arg: none
 mdba_proc() {
   local pod
@@ -541,22 +541,24 @@ mdba_proc() {
   run_sql_query "${pod}" 'SHOW PROCESSLIST;'
 }
 
-#### du <pod> [<database>] - calculate database disk usage
+#### du <pod> [-d <db>]: calculate database disk usage
 # arg: none
 mdba_du() {
-  local pod
+  local pod pattern
 
   pod="${KMDBA_TARGET}"
 
-  get_pod "${pod}"
   if [[ -n "${DATABASE}" ]]; then
-    exec_pod "${pod}" bash -o pipefail -c "du --human-readable /var/lib/mysql/${DATABASE}/* 2>/dev/null | sort --reverse --human-numeric-sort || echo /var/lib/mysql/${DATABASE} - not found"
+    pattern="${DATABASE}/*"
   else
-    exec_pod "${pod}" bash -o pipefail -c "find /var/lib/mysql/ -maxdepth 1 -type d ! -name 'lost+found' -exec du --summarize --human-readable {} \; | sort --reverse --human-numeric-sort | awk --field-separator=/ '{print \$1, \$5}'"
+    pattern="*"
   fi
+
+  get_pod "${pod}"
+  exec_pod "${pod}" bash -o pipefail -c "du --human-readable --summarize /var/lib/mysql/${pattern} | sort --reverse --human-numeric-sort"
 }
 
-#### top [<pod>] - display cpu and ram usage
+#### top [<pod>]: display cpu and ram usage
 # arg: none
 mdba_top() {
   "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" top pods --selector app.kubernetes.io/name=mariadb --containers \
@@ -566,7 +568,7 @@ mdba_top() {
     | colorize "VimHelp"
 }
 
-#### repl <replica> - check replication status
+#### repl <replica>: check replication status
 # arg: none
 mdba_repl() {
   local replica mariadb
@@ -586,7 +588,7 @@ mdba_repl() {
     | colorize "yaml"
 }
 
-#### skip <replica> - skip erroneous transactions
+#### skip <replica>: skip erroneous transactions
 # arg: none
 mdba_skip() {
   local replica mariadb replica_status
@@ -614,7 +616,7 @@ mdba_skip() {
   done
 }
 
-#### prom <replica> - promote replica to primary
+#### prom <replica>: promote replica to primary
 # arg: none
 mdba_prom() {
   local replica mariadb replica_index
@@ -640,7 +642,7 @@ mdba_prom() {
       || err "pod ${replica} from mariadb '${mariadb}' in '${KMDBA_NAMESPACE}' namespace is not primary yet"
 }
 
-#### recreate <replica> - recreate replica from primary
+#### recreate <replica>: recreate replica from primary
 # arg: none
 mdba_recreate() {
   local replica mariadb replica_ip primary context log_file

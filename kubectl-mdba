@@ -765,7 +765,7 @@ mdba_recreate() {
   # step 11
   if [[ "${KMDBA_RECREATE_STEP}" -le "${step_num}" ]]; then
     step "${step_num}" "replica" "${replica}" "Moving the restored backup from '${KMDBA_RESTORE_DIR}' to '/var/lib/mysql'"
-    exec_pod "${replica}" bash -c "rm --recursive --force /var/lib/mysql/*; mv ${KMDBA_RESTORE_DIR}/* /var/lib/mysql" \
+    exec_pod "${replica}" bash -c "rm --recursive --force /var/lib/mysql/* /var/lib/mysql/.my-healthcheck.cnf; mv ${KMDBA_RESTORE_DIR}/* /var/lib/mysql" \
       || err "failed to move the restored backup"
   fi
   (( step_num +=1 ))

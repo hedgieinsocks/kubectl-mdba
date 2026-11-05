@@ -6,7 +6,7 @@
 [[ -n "${DEBUG}" ]] && set -x
 set -eo pipefail
 
-VERSION="0.0.17"
+VERSION="0.0.18-dev"
 OPERATOR_VERSION="26.6.0"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
@@ -320,7 +320,7 @@ get_pod() {
 
 ### get mariadb json object and set crucial mariadb vars
 # arg: $1 - mariadb
-# set: MARIADB, MARIADB_REPLICATION, MARIADB_SUSPEND, MARIADB_CURRENT_PRIMARY_INDEX, MARIADB_DESIRED_PRIMARY_INDEX
+# set: MARIADB, MARIADB_REPLICATION, MARIADB_SUSPEND, MARIADB_CURRENT_PRIMARY_INDEX, MARIADB_DESIRED_PRIMARY_INDEX, MARIADB_ROOT_PASSWORD
 get_mariadb() {
   local mariadb
 
@@ -333,6 +333,8 @@ get_mariadb() {
   MARIADB_SUSPEND=$(jq --raw-output '.spec.suspend' <<< "${MARIADB}")
   MARIADB_CURRENT_PRIMARY_INDEX=$(jq --raw-output '.status.currentPrimaryPodIndex' <<< "${MARIADB}")
   MARIADB_DESIRED_PRIMARY_INDEX=$(jq --raw-output '.spec.replication.primary.podIndex' <<< "${MARIADB}")
+
+  MARIADB_ROOT_PASSWORD=$("${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" get secret "internal-${mariadb}" -o jsonpath='{.data.*}' | base64 -d)
 }
 
 ### assert that async/semi-sync replication is enabled
@@ -406,7 +408,7 @@ exec_pod_it() {
 }
 
 ### run a sql query in a mariadb pod
-# arg: $2 - pod
+# arg: $1 - pod
 #      $2 - sql query
 run_sql_query() {
   local pod sql_query
@@ -414,7 +416,7 @@ run_sql_query() {
   pod="$1"; shift
   sql_query="$1"; shift
 
-  exec_pod "${pod}" bash -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD} --execute='${sql_query}'"
+  exec_pod "${pod}" bash -c "mariadb --skip-ssl --user=root --password='${MARIADB_ROOT_PASSWORD}' --execute='${sql_query}'"
 }
 
 ### suspend mariadb reconciliation
@@ -524,8 +526,11 @@ mdba_sql() {
   local pod
 
   pod="${KMDBA_TARGET}"
+  mariadb="${KMDBA_TARGET%-[0-9]}"
 
+  get_mariadb "${mariadb}"
   get_pod "${pod}"
+
   [[ "${POD_ROLE}" == "replica" ]] && wrn "pod '${pod}' in '${KMDBA_NAMESPACE}' namespace is a replica"
   exec_pod_it "${pod}" bash -c "mariadb --skip-ssl --user=root --password=\${MARIADB_ROOT_PASSWORD}"
 }
@@ -536,8 +541,11 @@ mdba_proc() {
   local pod
 
   pod="${KMDBA_TARGET}"
+  mariadb="${KMDBA_TARGET%-[0-9]}"
 
+  get_mariadb "${mariadb}"
   get_pod "${pod}"
+
   run_sql_query "${pod}" 'SHOW PROCESSLIST;'
 }
 

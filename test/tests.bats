@@ -372,6 +372,35 @@ setup() {
   [[ "${output}" =~ "multiple targets provided" ]]
 }
 
+@test "parse_input: enter with args after '--' should succeed and keep them intact" {
+  parse_input enter mary-ok-0 -n foo -- ls -la "/var/lib/my sql"
+  [[ "${KMDBA_NAMESPACE}" == "foo" ]]
+  [[ "${KMDBA_TARGET}" == "mary-ok-0" ]]
+  [[ "${#KMDBA_ARGS[@]}" -eq 3 ]]
+  [[ "${KMDBA_ARGS[1]}" == "-la" ]]
+  [[ "${KMDBA_ARGS[2]}" == "/var/lib/my sql" ]]
+}
+
+@test "parse_input: sql with args after '--' should succeed" {
+  parse_input sql mary-ok-0 -- "SELECT 1;"
+  [[ "${KMDBA_ARGS[0]}" == "SELECT 1;" ]]
+}
+
+@test "parse_input: enter with empty args after '--' should succeed" {
+  parse_input enter mary-ok-0 --
+  [[ "${#KMDBA_ARGS[@]}" -eq 0 ]]
+}
+
+@test "parse_input: enter should fail with 'no target provided' error when target is after '--'" {
+  run -1 parse_input enter -- mary-ok-0
+  [[ "${output}" =~ "no target provided" ]]
+}
+
+@test "parse_input: proc should fail with 'only supported by' error" {
+  run -1 parse_input proc mary-ok-0 -- ls
+  [[ "${output}" =~ "only supported by 'enter' and 'sql'" ]]
+}
+
 @test "parse_input: proc should succeed" {
   run -0 parse_input proc mary-ok-0
 }
@@ -656,4 +685,23 @@ setup() {
   KMDBA_TARGET="mary-switch-1"
   run -1 mdba_recreate
   [[ "${output}" =~ "aborted due to mismatch" ]]
+}
+
+@test "mdba_enter: should run given command without tty and keep args intact" {
+  export MOCK_KUBECTL_ECHO_EXEC=1
+  KMDBA_TARGET="mary-ok-0"
+  KMDBA_ARGS=(mdb-info "foo bar")
+  run -0 mdba_enter
+  [[ ! "${output}" =~ "[--tty]" ]]
+  [[ "${output}" =~ "[mdb-info]" ]]
+  [[ "${output}" =~ "[foo bar]" ]]
+}
+
+@test "mdba_sql: should run given query and keep quotes intact" {
+  export MOCK_KUBECTL_ECHO_EXEC=1
+  KMDBA_TARGET="mary-ok-0"
+  KMDBA_ARGS=("SET GLOBAL replicate_ignore_db = 'foo';")
+  run -0 mdba_sql
+  [[ ! "${output}" =~ "[--tty]" ]]
+  [[ "${output}" =~ "[SET GLOBAL replicate_ignore_db = 'foo';]" ]]
 }

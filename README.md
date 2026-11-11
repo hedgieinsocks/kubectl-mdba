@@ -59,15 +59,15 @@ You can `export` the following variables to tweak the plugin's behaviour.
 kubectl mdba helps manage mariadb-operator async/semi-sync replication clusters
 
 Usage:
-  kubectl mdba <command> [<target>]
+  kubectl mdba <command> [<target>] [-- <args>]
 
 Commands:
   ls [<mariadb>]            list mariadbs with their pods
   status <mariadb>          check mariadb status
   suspend <mariadb>         pause mariadb reconciliation
   unsuspend <mariadb>       resume mariadb reconciliation
-  enter <pod>               exec into pod
-  sql <pod>                 launch mariadb shell
+  enter <pod> [-- <cmd>]    exec into pod or run command
+  sql <pod> [-- <query>]    launch mariadb shell or run query
   proc <pod>                print processlist
   du <pod> [-d <db>]        calculate database disk usage
   top [<pod>]               display cpu and ram usage

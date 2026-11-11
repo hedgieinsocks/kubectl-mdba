@@ -6,7 +6,7 @@
 [[ -n "${DEBUG}" ]] && set -x
 set -eo pipefail
 
-VERSION="0.0.18"
+VERSION="0.0.19"
 OPERATOR_VERSION="26.6.0"
 
 KMDBA_KUBECTL="${KMDBA_KUBECTL:-kubectl}"
@@ -38,7 +38,7 @@ show_help() {
 kubectl mdba helps manage mariadb-operator async/semi-sync replication clusters
 
 Usage:
-  kubectl mdba <command> [<target>]
+  kubectl mdba <command> [<target>] [-- <args>]
 
 Commands:
 $(awk '/^####/ {$1=""; print}' "$0" \
@@ -201,7 +201,7 @@ confirm() {
 # arg: $@ - arguments
 # set: KMDBA_KUBECTL, KMDBA_KUBECONFIG, KMDBA_NAMESPACE, KMDBA_IGNORE_PRIMARY_MISMATCH,
 #      KMDBA_STREAM_PORT, KMDBA_BACKUP_THREADS, KMDBA_RECREATE_STEP, KMDBA_SKIP_CONFIRMATION,
-#      KMDBA_CMD, KMDBA_TARGET
+#      KMDBA_CMD, KMDBA_TARGET, KMDBA_ARGS
 parse_input() {
   while (( "$#" )); do
     case "$1" in
@@ -273,6 +273,9 @@ parse_input() {
       -h|--help)
         show_help
         ;;
+      --)
+        shift; KMDBA_ARGS=("$@"); break
+        ;;
       -*)
         err "invalid option: $1"
         ;;
@@ -298,6 +301,7 @@ parse_input() {
   done
   [[ -n "${KMDBA_CMD}" ]] || show_help
   [[ -n "${KMDBA_TARGET}" || "${KMDBA_CMD}" =~ ^(ls|top)$ ]] || err "no target provided"
+  [[ "${#KMDBA_ARGS[@]}" -eq 0 || "${KMDBA_CMD}" =~ ^(enter|sql)$ ]] || err "arguments after '--' are only supported by 'enter' and 'sql' commands"
 }
 
 ### get pod json object and set crucial pod vars
@@ -508,7 +512,7 @@ mdba_unsuspend() {
   fi
 }
 
-#### enter <pod>: exec into pod
+#### enter <pod> [-- <cmd>]: exec into pod or run command
 # arg: none
 mdba_enter() {
   local pod
@@ -517,10 +521,17 @@ mdba_enter() {
 
   get_pod "${pod}"
   [[ "${POD_ROLE}" == "replica" ]] && wrn "pod '${pod}' in '${KMDBA_NAMESPACE}' namespace is a replica"
-  exec_pod_it "${pod}" "bash"
+
+  if [[ "${#KMDBA_ARGS[@]}" -eq 0 ]]; then
+    exec_pod_it "${pod}" "bash"
+  elif [[ -t 0 && -t 1 ]]; then
+    exec_pod_it "${pod}" "${KMDBA_ARGS[@]}"
+  else
+    exec_pod "${pod}" "${KMDBA_ARGS[@]}"
+  fi
 }
 
-#### sql <pod>: launch mariadb shell
+#### sql <pod> [-- <query>]: launch mariadb shell or run query
 # arg: none
 mdba_sql() {
   local pod
@@ -532,7 +543,14 @@ mdba_sql() {
   get_pod "${pod}"
 
   [[ "${POD_ROLE}" == "replica" ]] && wrn "pod '${pod}' in '${KMDBA_NAMESPACE}' namespace is a replica"
-  exec_pod_it "${pod}" bash -c "mariadb --skip-ssl --user=root --password='${MARIADB_ROOT_PASSWORD}'"
+
+  if [[ "${#KMDBA_ARGS[@]}" -eq 0 ]]; then
+    exec_pod_it "${pod}" bash -c "mariadb --skip-ssl --user=root --password='${MARIADB_ROOT_PASSWORD}'"
+  else
+    # pass the password and the query as positional args so that quotes in the query survive
+    # shellcheck disable=SC2016
+    exec_pod "${pod}" bash -c 'mariadb --skip-ssl --user=root --password="$1" --execute="$2"' _ "${MARIADB_ROOT_PASSWORD}" "${KMDBA_ARGS[*]}"
+  fi
 }
 
 #### proc <pod>: print processlist

@@ -2,6 +2,12 @@
 
 set -eo pipefail
 
+# print exec arguments one per line to let tests verify what is passed to the pod
+if [[ -n "${MOCK_KUBECTL_ECHO_EXEC}" && "$*" =~ " exec " ]]; then
+  printf "[%s]\n" "$@"
+  exit 0
+fi
+
 if [[ "$*" =~ "get mariadbs" ]]; then
   cat << EOF
 NAME      READY   STATUS    PRIMARY      UPDATES    AGE

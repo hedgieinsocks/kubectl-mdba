@@ -399,7 +399,7 @@ exec_pod() {
   "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" exec "${pod}" --container mariadb -- "${command[@]}"
 }
 
-### run an interactive shell command in a mariadb pod
+### run a shell command in a mariadb pod with --stdin --tty options
 # arg: $1 - pod
 #      $2 - command
 exec_pod_it() {
@@ -420,7 +420,23 @@ run_sql_query() {
   pod="$1"; shift
   sql_query="$1"; shift
 
-  exec_pod "${pod}" bash -c "mariadb --skip-ssl --user=root --password='${MARIADB_ROOT_PASSWORD}' --execute='${sql_query}'"
+  # pass the password and the query as positional args so that quotes in the query survive
+  # shellcheck disable=SC2016
+  exec_pod "${pod}" bash -c 'mariadb --skip-ssl --user=root --password="$1" --execute="$2"' _ "${MARIADB_ROOT_PASSWORD}" "${sql_query}"
+}
+
+### run a sql query in a mariadb pod with --stdin --tty options
+# arg: $1 - pod
+#      $2 - sql query
+run_sql_query_it() {
+  local pod sql_query
+
+  pod="$1"; shift
+  sql_query="$1"; shift
+
+  # pass the password and the query as positional args so that quotes in the query survive
+  # shellcheck disable=SC2016
+  exec_pod_it "${pod}" bash -c 'mariadb --skip-ssl --user=root --password="$1" --execute="$2"' _ "${MARIADB_ROOT_PASSWORD}" "${sql_query}"
 }
 
 ### suspend mariadb reconciliation
@@ -520,6 +536,7 @@ mdba_enter() {
   pod="${KMDBA_TARGET}"
 
   get_pod "${pod}"
+
   [[ "${POD_ROLE}" == "replica" ]] && wrn "pod '${pod}' in '${KMDBA_NAMESPACE}' namespace is a replica"
 
   if [[ "${#KMDBA_ARGS[@]}" -eq 0 ]]; then
@@ -531,7 +548,7 @@ mdba_enter() {
   fi
 }
 
-#### sql <pod> [-- <query>]: launch mariadb shell or run query
+#### sql <pod> [-- '<query>']: launch mariadb shell or run query
 # arg: none
 mdba_sql() {
   local pod
@@ -546,10 +563,10 @@ mdba_sql() {
 
   if [[ "${#KMDBA_ARGS[@]}" -eq 0 ]]; then
     exec_pod_it "${pod}" bash -c "mariadb --skip-ssl --user=root --password='${MARIADB_ROOT_PASSWORD}'"
+  elif [[ -t 0 && -t 1 ]]; then
+    run_sql_query_it "${pod}" "${KMDBA_ARGS[@]}"
   else
-    # pass the password and the query as positional args so that quotes in the query survive
-    # shellcheck disable=SC2016
-    exec_pod "${pod}" bash -c 'mariadb --skip-ssl --user=root --password="$1" --execute="$2"' _ "${MARIADB_ROOT_PASSWORD}" "${KMDBA_ARGS[*]}"
+    run_sql_query "${pod}" "${KMDBA_ARGS[@]}"
   fi
 }
 
@@ -564,7 +581,7 @@ mdba_proc() {
   get_mariadb "${mariadb}"
   get_pod "${pod}"
 
-  run_sql_query "${pod}" 'SHOW PROCESSLIST;'
+  run_sql_query_it "${pod}" 'SHOW PROCESSLIST;'
 }
 
 #### du <pod> [-d <db>]: calculate database disk usage
@@ -584,7 +601,7 @@ mdba_du() {
   exec_pod "${pod}" bash -o pipefail -c "du --human-readable --summarize /var/lib/mysql/${pattern} | sort --reverse --human-numeric-sort"
 }
 
-#### top [<pod>]: display cpu and ram usage
+#### top [<pod>]: display pod cpu and ram usage
 # arg: none
 mdba_top() {
   "${KMDBA_KUBECTL}" --kubeconfig "${KMDBA_KUBECONFIG}" --namespace "${KMDBA_NAMESPACE}" top pods --selector app.kubernetes.io/name=mariadb --containers \
